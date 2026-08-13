@@ -16,6 +16,9 @@
      между соседними датами. Отсюда её берут и вёрстка, и скрипт —
      раньше число стояло в двух местах и однажды разъехалось. */
   --step: 42px;
+  /* Видимая высота барабана. Меньше трёх делений — соседние даты
+     обрезаны по краям и не оставляют вокруг пустых полей. */
+  --view: 104px;
   /* Полоса-прицел чуть выше деления: выбранная дата так читается
      крупнее соседних, не растаскивая при этом сам барабан. */
   --aim: 50px;
@@ -123,7 +126,7 @@ h1 {
   display: flex; align-items: center;
   justify-content: space-between;
   /* Снизу почти без отступа: карточки идут сразу за барабанами. */
-  padding: 6px 14px 0 8px;
+  padding: 2px 14px 0 8px;
 }
 
 /* Ни подложки, ни рамки: барабаны лежат прямо на фоне страницы.
@@ -144,7 +147,7 @@ h1 {
   border-radius: 8px; pointer-events: none;
 }
 .wheel {
-  height: calc(var(--step) * 3);   /* ровно три деления */
+  height: var(--view);
   overflow-y: scroll;
   scroll-snap-type: y mandatory;
   scrollbar-width: none;
@@ -158,7 +161,13 @@ h1 {
   mask-image: linear-gradient(180deg, transparent 2%, rgba(0,0,0,.18) 20%, #000 40%, #000 60%, rgba(0,0,0,.18) 80%, transparent 98%);
 }
 .wheel::-webkit-scrollbar { display: none; }
-.wheel ul { list-style: none; margin: 0; padding: var(--step) 0; }
+.wheel ul {
+  list-style: none; margin: 0;
+  /* Ровно половина разницы между окном и делением. Иначе выбранное
+     значение перестанет совпадать с прицелом: скрипт ставит
+     scrollTop = idx * STEP и рассчитывает именно на это. */
+  padding: calc((var(--view) - var(--step)) / 2) 0;
+}
 .wheel li {
   height: var(--step); line-height: var(--step);
   scroll-snap-align: center;
@@ -166,7 +175,9 @@ h1 {
   /* Масштабировать соседние деления нельзя: transform меняет и то, что
      возвращает getBoundingClientRect, и геометрию scroll-snap. Разницу
      держим шрифтом и растворением по краям. */
-  transition: color .12s ease, font-size .12s ease;
+  /* Кегль меняем без перехода: на быстрой прокрутке анимация роста
+     цифры читается как рывок. */
+  transition: color .12s ease;
   cursor: pointer;
 }
 .wheel li.on {
@@ -202,6 +213,9 @@ h1 {
 .top {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: 10px; margin-bottom: 12px;
+  /* Межстрочный интервал добавлял сверху лишние ~4 px, и отступ над
+     названием выходил заметно больше бокового. Прижимаем строку. */
+  line-height: 1.15;
 }
 .move h2 {
   margin: 0; font-size: 17px; font-weight: 600;
@@ -212,9 +226,11 @@ h1 {
 /* Поле на подход, а не одна строка «9 7 5»: на телефоне так вылезает
    цифровая клавиатура, а не полная, и разделители не нужны вовсе. */
 .sets input {
-  width: 62px; height: 48px;
+  /* 44 px — нижняя граница удобного попадания пальцем, ниже не идём.
+     Лишний воздух убран по бокам: под две цифры 62 px было много. */
+  width: 48px; height: 44px;
   font: inherit; font-size: 19px; text-align: center;
-  border: 1.5px solid var(--line); border-radius: 10px;
+  border: 1.5px solid var(--line); border-radius: 9px;
   background: #fcfbfa; color: var(--fg);
   -moz-appearance: textfield;
 }
@@ -222,7 +238,7 @@ h1 {
 .sets input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .sets input:focus { outline: none; border-color: var(--accent); background: #fff; }
 .more {
-  height: 48px; min-width: 48px; padding: 0 12px;
+  height: 44px; min-width: 44px; padding: 0 10px;
   border: 1.5px dashed var(--line); border-radius: 10px;
   background: none; color: var(--muted);
   font: inherit; font-size: 20px; cursor: pointer;
@@ -406,22 +422,36 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     return {
       el: w,
       /* Заполнить барабан. keep — значение, которое стараемся сохранить. */
+      /* Список правим на месте, а не пересобираем.
+         Прокрутка месяца зовёт refill() на каждом делении, и полная
+         пересборка (innerHTML = '' плюс новый scrollTop) дёргала
+         барабан дня: на глаз он прыгал, пока соседние стояли смирно.
+         Теперь лишние деления снимаются с хвоста, недостающие
+         дописываются, а позиция трогается только если она правда
+         изменилась. */
       fill: function (values, keep) {
-        ul.innerHTML = '';
-        items = values.map(function (v) {
-          var li = el('li', null, v.text);
-          li.dataset.v = v.value;
+        var self = this;
+        while (items.length > values.length) { ul.removeChild(items.pop()); }
+        for (var i = 0; i < values.length; i++) {
+          var li = items[i];
+          if (!li) { li = el('li'); ul.appendChild(li); items.push(li); }
+          if (li.textContent !== values[i].text) { li.textContent = values[i].text; }
+          li.dataset.v = values[i].value;
           // По делению можно и просто ткнуть — короче, чем крутить.
-          li.onclick = function () { this.set(v.value); if (onpick) { onpick(); } }.bind(this);
-          ul.appendChild(li);
-          return li;
-        }, this);
+          li.onclick = (function (v) {
+            return function () { self.set(v); if (onpick) { onpick(); } };
+          })(values[i].value);
+        }
         var at = values.findIndex(function (v) { return String(v.value) === String(keep); });
-        idx = at < 0 ? 0 : at;
-        quiet = true;
-        w.scrollTop = idx * STEP;
+        var next = at < 0 ? 0 : at;
+        var move = next !== idx || Math.abs(w.scrollTop - next * STEP) > 1;
+        idx = next;
+        if (move) {
+          quiet = true;
+          w.scrollTop = idx * STEP;
+          setTimeout(function () { quiet = false; }, 0);
+        }
         light();
-        setTimeout(function () { quiet = false; }, 0);
       },
       get: function () {
         return items.length ? Number(items[idx].dataset.v) : null;
