@@ -117,6 +117,29 @@ h1 {
   #menu .sheet { left: calc(50% - 272px); right: auto; width: 300px; }
 }
 
+/* Перенос на другое устройство: раскрывается прямо в листе меню. */
+#mvbody[hidden] { display: none; }
+#mvbody { padding: 2px 12px 10px; }
+#mvbody p { margin: 0 0 8px; font-size: 14px; line-height: 1.4; }
+#mvbody p.warn { color: #b03030; }
+#mvbody .link {
+  /* Ссылка длинная и её будут перепечатывать глазами: моноширинный
+     шрифт, перенос по любому символу и крупная область для выделения. */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px; line-height: 1.45;
+  word-break: break-all; user-select: all;
+  background: #f2efea; border-radius: 8px;
+  padding: 8px 10px; margin-bottom: 8px;
+}
+#mvbody .acts { display: flex; gap: 8px; }
+#mvbody .acts button {
+  width: auto; flex: 1 1 auto;
+  min-height: 44px; padding: 0 14px;
+  text-align: center; font-size: 15px;
+  border-radius: 9px; background: var(--accent); color: #fff;
+}
+#mvbody .acts button.plain { background: #e7e2da; color: var(--fg); }
+
 /* Дата вводится отдельно от упражнений: заносить занятия задним числом
    Михаил будет чаще, чем в тот же день — данные приезжают из телеграма.
 
@@ -293,6 +316,8 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
 <div id="menu" hidden>
   <div class="sheet">
     <button id="dl" type="button">Скачать таблицу .xlsx</button>
+    <button id="mv" type="button">Перенести на другое устройство</button>
+    <div id="mvbody" hidden></div>
   </div>
 </div>
 
@@ -328,6 +353,18 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     try { localStorage.setItem(ACCESS, m[1].toLowerCase()); } catch (e) { /* приват */ }
     history.replaceState(null, '', location.pathname);
   }
+  /* Ссылку могут открыть во вкладке, где дневник уже открыт. Тогда
+     меняется только часть после решётки, а это для браузера не переход:
+     страница не перезагружается, и весь разбор выше не отработает —
+     человек смотрит на свой прежний дневник и думает, что перенос не
+     сработал. Ловим смену решётки отдельно и перезагружаемся сами. */
+  window.addEventListener('hashchange', function () {
+    var got = location.hash.match(/k=([a-f0-9]{64})/i);
+    if (!got) { return; }
+    try { localStorage.setItem(ACCESS, got[1].toLowerCase()); } catch (e) { /* приват */ }
+    location.replace(location.pathname);
+  });
+
   var access = null;
   try { access = localStorage.getItem(ACCESS); } catch (e) { access = null; }
   if (!access) {
@@ -371,13 +408,98 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   /* --- меню --- */
   var menu = document.getElementById('menu');
   document.getElementById('burger').onclick = function () { menu.hidden = false; };
+  // Закрывая меню, сворачиваем и раскрытый перенос: иначе в следующий
+  // раз ссылка окажется на экране сразу, без спроса.
+  function closeMenu() {
+    menu.hidden = true;
+    if (mvBody) { mvBody.hidden = true; }
+  }
   menu.onclick = function (e) {
-    // Клик мимо листа закрывает — отдельной крестик не нужен.
-    if (e.target === menu) { menu.hidden = true; }
+    // Клик мимо листа закрывает — отдельный крестик не нужен.
+    if (e.target === menu) { closeMenu(); }
   };
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { menu.hidden = true; }
+    if (e.key === 'Escape') { closeMenu(); }
   });
+  /* --- перенос дневника на другое устройство ---
+     Ключ лежит в адресе после решётки. Всё правее неё браузер на сервер
+     не отправляет: ссылка не попадёт ни в логи nginx, ни в статистику. */
+  function shareLink() {
+    return location.origin + location.pathname + '#k=' + access;
+  }
+
+  function copy(text, btn) {
+    var was = btn.textContent;
+    function done(ok) {
+      btn.textContent = ok ? 'скопировано' : 'не вышло';
+      setTimeout(function () { btn.textContent = was; }, 1600);
+    }
+    function old() {
+      // Запасной путь: буфер обмена доступен только по https и не во
+      // всех браузерах. Временное поле, выделение, копирование, уборка.
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      ta.remove();
+      done(ok);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, old);
+    } else { old(); }
+  }
+
+  var mvBody = document.getElementById('mvbody');
+  var mvFilled = false;
+
+  function fillMover() {
+    if (mvFilled) { return; }
+    mvFilled = true;
+    var link = shareLink();
+    mvBody.innerHTML =
+      '<p>Откройте эту ссылку на другом устройстве — дневник будет ' +
+      'там же и общий.</p>' +
+      '<p class="warn">Ссылка открывает полный доступ: кто её получил, ' +
+      'тот видит и правит все ваши тренировки.</p>';
+
+    var box = document.createElement('div');
+    box.className = 'link';
+    box.textContent = link;
+    mvBody.appendChild(box);
+
+    var acts = document.createElement('div');
+    acts.className = 'acts';
+    mvBody.appendChild(acts);
+
+    var cp = document.createElement('button');
+    cp.type = 'button';
+    cp.textContent = 'Копировать';
+    cp.onclick = function () { copy(link, cp); };
+    acts.appendChild(cp);
+
+    // Системное «Поделиться» есть не везде: на настольных браузерах его
+    // обычно нет, и кнопка была бы обманом.
+    if (navigator.share) {
+      var sh = document.createElement('button');
+      sh.type = 'button';
+      sh.className = 'plain';
+      sh.textContent = 'Поделиться';
+      sh.onclick = function () {
+        navigator.share({ title: 'Мои тренировки', url: link })
+          .catch(function () { /* закрыл окно — это не ошибка */ });
+      };
+      acts.appendChild(sh);
+    }
+  }
+
+  document.getElementById('mv').onclick = function () {
+    fillMover();
+    mvBody.hidden = !mvBody.hidden;
+  };
+
   document.getElementById('dl').onclick = function () {
     menu.hidden = true;
     stat('собираю таблицу…');
