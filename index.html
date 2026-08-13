@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Тренировки</title>
+<meta name="theme-color" content="#f7f6f4">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
 <style>
 :root {
   --bg: #f7f6f4;
@@ -717,6 +722,17 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     })
     .catch(function () { stat('нет связи', true); });
 }());
+
+/* Без service worker Chrome предлагает только «ярлык на сайт», а не
+   установку приложения. Регистрируем после загрузки, чтобы он не
+   соперничал за сеть с первым запросом данных. */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/sw.js').catch(function (e) {
+      console.log('service worker не встал:', e);
+    });
+  });
+}
 </script>
 </body>
 </html>

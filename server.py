@@ -22,6 +22,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 from datetime import date, timedelta
 from urllib.parse import quote
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -51,6 +52,26 @@ EXPORT_PY = shutil.which("python3.12") or "python3"
 
 MAX_SETS = 12        # больше подходов за раз — почти наверняка опечатка
 MAX_REPS = 500       # приседаний бывает много, но не столько
+
+BOOK = DATA / "тренировки.xlsx"
+
+# Статика отдаётся по белому списку, а не по пути из запроса. Так к
+# обходу каталогов (../../etc/passwd) просто нечего приложить.
+STATIC = {
+    "/manifest.webmanifest": ("manifest.webmanifest",
+                              "application/manifest+json; charset=utf-8"),
+    "/sw.js": ("sw.js", "application/javascript; charset=utf-8"),
+    "/icons/icon-192.png": ("icons/icon-192.png", "image/png"),
+    "/icons/icon-512.png": ("icons/icon-512.png", "image/png"),
+    "/icons/icon-mask.png": ("icons/icon-mask.png", "image/png"),
+}
+
+# Пересборка книги идёт в фоне, и одновременно её запускать нельзя:
+# два процесса писали бы в один файл. Замок пропускает одного, а
+# «пришло ещё» запоминается флагом — после текущей сборки будет ровно
+# одна догоняющая, а не очередь из десяти.
+_book_lock = threading.Lock()
+_book_again = threading.Event()
 
 
 def read():
@@ -159,6 +180,45 @@ def add(move, sets, when):
     write(rows)
 
 
+def build_book():
+    """Пересобрать .xlsx из CSV. Возвращает (получилось, пояснение).
+
+    Экспорт живёт отдельным скриптом под python3.12: openpyxl стоит
+    только там. Книга собирается ЦЕЛИКОМ заново, а не правится —
+    поэтому испортить её нечем."""
+    try:
+        done = subprocess.run(
+            [EXPORT_PY, str(BASE / "export.py")],
+            capture_output=True, text=True, timeout=120,
+            env={**os.environ, "SPORT_DATA": str(DATA)})
+    except Exception as e:                           # noqa: BLE001
+        return False, "не смог запустить сборку: %s" % e
+    if done.returncode != 0 or not BOOK.exists():
+        hint = (done.stderr or done.stdout or "").strip().splitlines()
+        return False, "сборка не удалась: %s" % (hint[-1] if hint else "без подробностей")
+    return True, ""
+
+
+def rebuild_soon():
+    """Пересобрать книгу после записи, не заставляя браузер ждать.
+
+    Смысл в том, чтобы data/тренировки.xlsx всегда лежала свежей: зашёл
+    на сервер, забрал файл — и не гадаешь, всё ли туда попало."""
+    if not _book_lock.acquire(blocking=False):
+        _book_again.set()            # уже собираем — попросим повторить
+        return
+    try:
+        while True:
+            _book_again.clear()
+            ok, why = build_book()
+            if not ok:
+                print("книга не пересобралась:", why, flush=True)
+            if not _book_again.is_set():
+                break
+    finally:
+        _book_lock.release()
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -185,28 +245,25 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, read())
         if self.path == "/api/xlsx":
             return self.xlsx()
+        got = STATIC.get(self.path.split("?")[0])
+        if got:
+            f = BASE / got[0]
+            if not f.exists():
+                return self.send(404, {"ошибка": "файл не собран: %s" % got[0]})
+            return self.send(200, f.read_bytes(), got[1])
         self.send(404, {"ошибка": "нет такой страницы"})
 
     def xlsx(self):
         """Пересобирает книгу и отдаёт её файлом.
 
-        Собираем на каждый запрос, а не держим готовую: иначе можно
-        скачать вчерашнюю и не заметить. Экспорт живёт отдельным
-        скриптом под python3.12 — openpyxl стоит только там."""
-        book = DATA / "тренировки.xlsx"
-        try:
-            done = subprocess.run(
-                [EXPORT_PY, str(BASE / "export.py")],
-                capture_output=True, text=True, timeout=60,
-                env={**os.environ, "SPORT_DATA": str(DATA)})
-        except Exception as e:                       # noqa: BLE001
-            return self.send(500, {"ошибка": "не смог запустить сборку: %s" % e})
-        if done.returncode != 0 or not book.exists():
-            hint = (done.stderr or done.stdout or "").strip().splitlines()
-            return self.send(500, {"ошибка": "сборка не удалась: %s" %
-                                   (hint[-1] if hint else "без подробностей")})
-
-        blob = book.read_bytes()
+        Пересобираем перед отдачей, хотя она и так обновляется после
+        каждой записи: замок держим на время сборки, чтобы не читать
+        файл, пока фоновая пересборка его пишет."""
+        with _book_lock:
+            ok, why = build_book()
+            if not ok:
+                return self.send(500, {"ошибка": why})
+            blob = BOOK.read_bytes()
         self.send_response(200)
         self.send_header(
             "Content-Type",
@@ -235,6 +292,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400, {"ошибка": str(e)})
         except Exception as e:                       # noqa: BLE001 — наружу не пускаем
             return self.send(500, {"ошибка": "не смог записать: %s" % e})
+        # Ответ уходит сразу, книга дособирается следом. Ждать сборки
+        # тут нельзя: openpyxl на большой таблице думает секунду-другую,
+        # и кнопка «Записать» подвисала бы на ровном месте.
+        threading.Thread(target=rebuild_soon, daemon=True).start()
         self.send(200, state())
 
 

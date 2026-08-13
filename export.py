@@ -15,6 +15,7 @@
 import csv
 import os
 import sys
+import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -173,7 +174,19 @@ def build():
     ws.freeze_panes = "B3"          # шапка и дата не уезжают при прокрутке
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    wb.save(OUT)
+    # Сохраняем через временный файл и подменяем одним движением.
+    # Книга пересобирается после каждой записи, и без этого можно было
+    # бы скачать её ровно в тот момент, когда openpyxl дописывает архив,
+    # — получился бы битый .xlsx без единой ошибки на экране.
+    fd, tmp = tempfile.mkstemp(dir=str(OUT.parent), suffix=".xlsx")
+    os.close(fd)
+    try:
+        wb.save(tmp)
+        os.replace(tmp, OUT)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
     return len(days)
 
 
