@@ -182,6 +182,8 @@ def build():
     os.close(fd)
     try:
         wb.save(tmp)
+        # mkstemp отдаёт 0600 — своим же файлом потом не поделишься.
+        os.chmod(tmp, 0o644)
         os.replace(tmp, OUT)
     except BaseException:
         if os.path.exists(tmp):
