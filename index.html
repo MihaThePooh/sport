@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Тренировки</title>
+<style>
+:root {
+  --bg: #f7f6f4;
+  --card: #ffffff;
+  --fg: #1a1714;
+  --muted: #8b837a;
+  --line: #e3ded7;
+  --accent: #2f6f4e;
+  --gold: #b8860b;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0 0 calc(24px + env(safe-area-inset-bottom));
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+@media (min-width: 720px) { body { max-width: 560px; margin: 0 auto; } }
+
+/* Шапка — ровно такая же, как в тудушке: те же размеры, тот же шрифт,
+   та же полоска снизу. Приложения соседние, и переключаться между ними
+   должно быть как между экранами одного, а не двух разных. */
+header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(5px + env(safe-area-inset-top)) 14px 5px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Бургер той же формы, что кнопки в заголовках разделов тудушки. */
+#burger {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.6px solid #c3bcb2;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  padding: 0;
+  cursor: pointer;
+}
+#burger svg { width: 13px; height: 13px; display: block; }
+#burger:active { transform: scale(.92); }
+
+#state {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+#state.err { color: #b03030; font-weight: 600; }
+
+/* Меню — выезжающий лист, как в тудушке. */
+#menu[hidden] { display: none; }
+#menu {
+  position: fixed; inset: 0; z-index: 40;
+  background: rgba(26,23,20,.28);
+}
+#menu .sheet {
+  position: absolute; left: 8px; right: 8px;
+  top: calc(50px + env(safe-area-inset-top));
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.14);
+}
+#menu button {
+  display: block; width: 100%;
+  border: 0; border-radius: 8px;
+  background: none; color: var(--fg);
+  font: inherit; font-size: 15px; text-align: left;
+  padding: 13px 12px; min-height: 46px;
+  cursor: pointer;
+}
+#menu button:active { background: #f2efea; }
+@media (min-width: 720px) {
+  #menu .sheet { left: calc(50% - 272px); right: auto; width: 300px; }
+}
+
+/* Дата вводится отдельно от упражнений: заносить занятия задним числом
+   Михаил будет чаще, чем в тот же день — данные приезжают из телеграма.
+
+   Барабаны, а не календарь. Календарь требует прицелиться в клетку
+   4×4 мм; барабан достаточно крутануть в сторону. Физику инерции не
+   пишем руками — это делает сам браузер: обычная прокрутка плюс
+   scroll-snap. Отсюда и «долгий» ход от одного свайпа.
+
+   Барабаны к левому краю, подтверждение — к правому. Между ними пусто:
+   два разных действия, и путать их пальцем не надо. */
+.pick {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px 8px 8px;
+}
+
+.wheels {
+  position: relative;
+  display: flex; gap: 2px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 8px;
+}
+/* Полоса-прицел по центру: видно, какое значение выбрано. */
+.wheels::before {
+  content: ''; position: absolute; left: 5px; right: 5px;
+  top: 50%; height: 44px; margin-top: -22px;
+  background: rgba(47,111,78,.07);
+  border-top: 1px solid rgba(47,111,78,.25);
+  border-bottom: 1px solid rgba(47,111,78,.25);
+  border-radius: 8px; pointer-events: none;
+}
+.wheel {
+  height: 132px;             /* ровно три деления по 44 px */
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  text-align: center;
+  /* Края растворяются — оттого и читается как барабан, а не как список. */
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 22%, #000 78%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 22%, #000 78%, transparent);
+}
+.wheel::-webkit-scrollbar { display: none; }
+.wheel ul { list-style: none; margin: 0; padding: 44px 0; }
+.wheel li {
+  height: 44px; line-height: 44px;
+  scroll-snap-align: center;
+  font-size: 19px; color: #bdb6ac;
+  transition: color .12s ease;
+  cursor: pointer;
+}
+.wheel li.on { color: var(--fg); font-weight: 600; font-size: 21px; }
+.wheel.day { width: 54px; }
+.wheel.mon { width: 64px; }
+.wheel.year { width: 72px; }
+
+/* Подтверждение даты. Тусклая — значит показанное уже записано. */
+.fix {
+  width: 62px; height: 62px; flex: 0 0 auto;
+  border: 0; border-radius: 16px;
+  background: var(--accent); color: #fff;
+  font: inherit; font-size: 26px; font-weight: 600;
+  cursor: pointer;
+  transition: background .15s ease, opacity .15s ease;
+}
+.fix:disabled { background: #cfd8d2; color: #f2f5f3; cursor: default; }
+.fix.done { font-size: 15px; }
+
+.move {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin: 10px 16px;
+  padding: 14px;
+}
+.move h2 {
+  margin: 0 0 2px; font-size: 17px; font-weight: 600;
+}
+.was { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+.was b { color: var(--fg); font-weight: 600; }
+
+.sets { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+/* Поле на подход, а не одна строка «9 7 5»: на телефоне так вылезает
+   цифровая клавиатура, а не полная, и разделители не нужны вовсе. */
+.sets input {
+  width: 62px; height: 48px;
+  font: inherit; font-size: 19px; text-align: center;
+  border: 1.5px solid var(--line); border-radius: 10px;
+  background: #fcfbfa; color: var(--fg);
+  -moz-appearance: textfield;
+}
+.sets input::-webkit-outer-spin-button,
+.sets input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.sets input:focus { outline: none; border-color: var(--accent); background: #fff; }
+.more {
+  height: 48px; min-width: 48px; padding: 0 12px;
+  border: 1.5px dashed var(--line); border-radius: 10px;
+  background: none; color: var(--muted);
+  font: inherit; font-size: 20px; cursor: pointer;
+}
+
+.go {
+  margin-top: 12px; width: 100%; height: 48px;
+  border: 0; border-radius: 10px;
+  background: var(--accent); color: #fff;
+  font: inherit; font-size: 16px; font-weight: 600;
+  cursor: pointer;
+}
+.go:disabled { background: #cfd8d2; cursor: default; }
+
+.rec {
+  margin-top: 10px; font-size: 13px; color: var(--muted);
+  display: flex; justify-content: space-between; gap: 10px;
+}
+.rec b { color: var(--gold); font-weight: 600; }
+.rec .dim { color: #b3aca3; }   /* абсолютный пик — справочно, мельче по весу */
+
+/* Всплывающая строка ответа — та же роль, что у «сохранено» в тудушке. */
+#say {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+  background: #1a1714; color: #fff;
+  font-size: 14px; padding: 9px 16px; border-radius: 20px;
+  opacity: 0; pointer-events: none; transition: opacity .2s ease;
+  max-width: 90vw; text-align: center;
+}
+#say.on { opacity: .94; }
+#say.win { background: var(--accent); }
+#say.bad { background: #c0392b; }
+
+footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <button id="burger" aria-label="меню">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+  <h1>Тренировки</h1>
+  <span id="state">…</span>
+</header>
+
+<div id="menu" hidden>
+  <div class="sheet">
+    <button id="dl" type="button">Скачать таблицу .xlsx</button>
+  </div>
+</div>
+
+<div class="pick">
+  <div class="wheels" id="wheels"></div>
+  <button class="fix" id="fix" type="button" disabled
+          aria-label="подтвердить дату">✓</button>
+</div>
+
+<div id="moves"></div>
+
+<footer>Таблица пересобирается из этих записей — <code>export.py</code></footer>
+<div id="say"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var MOVES = ['подтягивания', 'отжимания', 'приседания'];
+  var START = 3;      // столько полей показываем сразу: обычный формат — три подхода
+  var box = document.getElementById('moves');
+  var sayEl = document.getElementById('say');
+  var stateEl = document.getElementById('state');
+  var sayTimer = null;
+
+  /* Две разные вещи, и путать их не надо.
+     state — строка в углу, как в тудушке: что сейчас с сервером.
+     say — всплывашка, и только по хорошему поводу: рекорд. */
+  function stat(text, bad) {
+    stateEl.textContent = text;
+    stateEl.classList.toggle('err', !!bad);
+  }
+
+  function say(text, kind) {
+    sayEl.textContent = text;
+    sayEl.className = 'on' + (kind ? ' ' + kind : '');
+    clearTimeout(sayTimer);
+    sayTimer = setTimeout(function () { sayEl.className = ''; }, 2600);
+  }
+
+  /* --- меню --- */
+  var menu = document.getElementById('menu');
+  document.getElementById('burger').onclick = function () { menu.hidden = false; };
+  menu.onclick = function (e) {
+    // Клик мимо листа закрывает — отдельной крестик не нужен.
+    if (e.target === menu) { menu.hidden = true; }
+  };
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { menu.hidden = true; }
+  });
+  document.getElementById('dl').onclick = function () {
+    menu.hidden = true;
+    stat('собираю таблицу…');
+    // Файл пересобирается из записей на сервере, поэтому не ссылка,
+    // а запрос: пока не собрался, показываем это в углу.
+    fetch('/api/xlsx').then(function (r) {
+      if (!r.ok) { return r.json().then(function (d) { throw new Error(d['ошибка']); }); }
+      return r.blob();
+    }).then(function (blob) {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'тренировки.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      stat('таблица собрана');
+    }).catch(function (e) {
+      stat(String(e.message || e), true);
+    });
+  };
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) { n.className = cls; }
+    if (text != null) { n.textContent = text; }
+    return n;
+  }
+
+  /* --- дата барабанами ---
+
+     Барабан — это обычный прокручиваемый список с scroll-snap. Инерцию
+     и «долгий ход» от одного свайпа даёт сам браузер, писать физику
+     руками не надо и не стоит: своя всегда ощущается чужой.
+
+     Выбранное значение — то, что оказалось в центре: индекс считается
+     как scrollTop / высоту деления. Событие scrollend поддержано не
+     везде, поэтому досчитываем по таймеру после последнего движения. */
+
+  var STEP = 44;                 // высота одного деления; ДОЛЖНА совпадать с .wheel li в CSS
+  var MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн',
+                'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+  var KEY = 'спорт-дата';        // где помним последнюю подтверждённую дату
+
+  function wheel(cls, onpick) {
+    var w = el('div', 'wheel ' + cls);
+    var ul = el('ul');
+    w.appendChild(ul);
+    var items = [];
+    var idx = 0;
+    var timer = null;
+    var quiet = false;           // пока ставим позицию кодом, событий не слушаем
+
+    function light() {
+      for (var i = 0; i < items.length; i++) {
+        items[i].classList.toggle('on', i === idx);
+      }
+    }
+
+    function settle() {
+      var i = Math.round(w.scrollTop / STEP);
+      i = Math.max(0, Math.min(i, items.length - 1));
+      if (i === idx) { light(); return; }
+      idx = i;
+      light();
+      if (onpick) { onpick(); }
+    }
+
+    w.addEventListener('scroll', function () {
+      if (quiet) { return; }
+      clearTimeout(timer);
+      // Промежуточную подсветку даём сразу — барабан «живой» на глаз,
+      // а решение принимаем, когда прокрутка остановилась.
+      var i = Math.max(0, Math.min(Math.round(w.scrollTop / STEP), items.length - 1));
+      if (i !== idx) { idx = i; light(); if (onpick) { onpick(); } }
+      timer = setTimeout(settle, 90);
+    }, { passive: true });
+
+    return {
+      el: w,
+      /* Заполнить барабан. keep — значение, которое стараемся сохранить. */
+      fill: function (values, keep) {
+        ul.innerHTML = '';
+        items = values.map(function (v) {
+          var li = el('li', null, v.text);
+          li.dataset.v = v.value;
+          // По делению можно и просто ткнуть — короче, чем крутить.
+          li.onclick = function () { this.set(v.value); if (onpick) { onpick(); } }.bind(this);
+          ul.appendChild(li);
+          return li;
+        }, this);
+        var at = values.findIndex(function (v) { return String(v.value) === String(keep); });
+        idx = at < 0 ? 0 : at;
+        quiet = true;
+        w.scrollTop = idx * STEP;
+        light();
+        setTimeout(function () { quiet = false; }, 0);
+      },
+      get: function () {
+        return items.length ? Number(items[idx].dataset.v) : null;
+      },
+      set: function (v) {
+        for (var i = 0; i < items.length; i++) {
+          if (String(items[i].dataset.v) === String(v)) {
+            idx = i; quiet = true; w.scrollTop = i * STEP; light();
+            setTimeout(function () { quiet = false; }, 0);
+            return;
+          }
+        }
+      }
+    };
+  }
+
+  var wheels = document.getElementById('wheels');
+  var fixBtn = document.getElementById('fix');
+  var fixed = null;              // подтверждённая дата, ГГГГ-ММ-ДД
+  var wDay, wMon, wYear;
+
+  function daysIn(y, m) { return new Date(y, m, 0).getDate(); }
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+  function shown() {
+    var y = wYear.get(), m = wMon.get(), d = wDay.get();
+    if (!y || !m || !d) { return null; }
+    return y + '-' + pad(m) + '-' + pad(d);
+  }
+
+  /* Число дней зависит от месяца и года: в феврале барабан короче. */
+  function refill() {
+    var y = wYear.get(), m = wMon.get(), keep = wDay.get();
+    var n = daysIn(y, m);
+    var list = [];
+    for (var i = 1; i <= n; i++) { list.push({ value: i, text: String(i) }); }
+    wDay.fill(list, Math.min(keep || 1, n));
+  }
+
+  function relight() {
+    var now = shown();
+    var same = now === fixed;
+    fixBtn.disabled = same;
+    // Кнопки записи зависят от того же условия — обновляем вместе,
+    // иначе «Записать» остаётся активной на неподтверждённой дате.
+    MOVES.forEach(function (m) {
+      var c = box.querySelector('[data-move="' + m + '"]');
+      if (c) { check(c); }
+    });
+    if (same && fixBtn.classList.contains('done')) { return; }
+    fixBtn.classList.remove('done');
+    fixBtn.textContent = '✓';
+  }
+
+  function buildPicker(today) {
+    var start = fixed || today;
+    var y0 = Number(start.slice(0, 4)), m0 = Number(start.slice(5, 7)),
+        d0 = Number(start.slice(8, 10));
+
+    wDay = wheel('day', relight);
+    wMon = wheel('mon', function () { refill(); relight(); });
+    wYear = wheel('year', function () { refill(); relight(); });
+    wheels.appendChild(wDay.el);
+    wheels.appendChild(wMon.el);
+    wheels.appendChild(wYear.el);
+
+    var years = [];
+    // Снизу — первый год дневника, сверху — следующий: занятие «на завтра»
+    // не заносят, но переход года не должен упираться в потолок.
+    for (var y = 2022; y <= Number(today.slice(0, 4)) + 1; y++) {
+      years.push({ value: y, text: String(y) });
+    }
+    wYear.fill(years, y0);
+    wMon.fill(MONTHS.map(function (t, i) {
+      return { value: i + 1, text: t };
+    }), m0);
+    refill();
+    wDay.set(d0);
+    relight();
+  }
+
+  fixBtn.onclick = function () {
+    var now = shown();
+    if (!now) { return; }
+    fixed = now;
+    try { localStorage.setItem(KEY, fixed); } catch (e) { /* приватный режим */ }
+    fixBtn.classList.add('done');
+    fixBtn.textContent = 'ок';
+    fixBtn.disabled = true;
+    MOVES.forEach(function (m) {
+      check(box.querySelector('[data-move="' + m + '"]'));
+    });
+    setTimeout(function () {
+      fixBtn.classList.remove('done');
+      fixBtn.textContent = '✓';
+    }, 2000);
+  };
+
+  /* Поле под один подход. Enter и заполнение двух цифр уводят фокус
+     дальше, чтобы не тянуться пальцем к следующей клетке. */
+  function field(card) {
+    var i = el('input');
+    i.type = 'text';
+    i.inputMode = 'numeric';
+    i.pattern = '[0-9]*';
+    i.maxLength = 3;
+    i.setAttribute('aria-label', 'повторений в подходе');
+    i.addEventListener('input', function () {
+      i.value = i.value.replace(/\D/g, '');
+      check(card);
+    });
+    i.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); next(i); }
+    });
+    return i;
+  }
+
+  function next(input) {
+    var all = [].slice.call(input.parentNode.querySelectorAll('input'));
+    var i = all.indexOf(input);
+    if (all[i + 1]) { all[i + 1].focus(); }
+    else { input.blur(); }
+  }
+
+  function values(card) {
+    return [].slice.call(card.querySelectorAll('.sets input'))
+      .map(function (i) { return parseInt(i.value, 10); })
+      .filter(function (v) { return v > 0; });
+  }
+
+  // Кнопка живая только когда есть что отправлять — и когда понятно,
+  // за какой день. Барабаны крутанули, а галочку не нажали — запись
+  // ушла бы в прошлую дату молча; это как раз тот случай, который
+  // замечаешь через месяц и уже не починишь.
+  function check(card) {
+    var v = values(card);
+    var go = card.querySelector('.go');
+    var stale = shown() !== fixed;
+    go.disabled = !v.length || stale;
+    if (stale) { go.textContent = 'Сначала подтвердите дату'; return; }
+    go.textContent = v.length
+      ? 'Записать: ' + v.join(' + ') + ' = ' + v.reduce(function (a, b) { return a + b; }, 0)
+      : 'Записать';
+  }
+
+  function card(move) {
+    var c = el('section', 'move');
+    c.dataset.move = move;
+    c.appendChild(el('h2', null, move));
+    c.appendChild(el('div', 'was', '—'));
+
+    var sets = el('div', 'sets');
+    for (var i = 0; i < START; i++) { sets.appendChild(field(c)); }
+    var more = el('button', 'more', '+');
+    more.type = 'button';
+    more.title = 'ещё подход';
+    more.onclick = function () {
+      var f = field(c);
+      sets.insertBefore(f, more);
+      f.focus();
+    };
+    sets.appendChild(more);
+    c.appendChild(sets);
+
+    var go = el('button', 'go', 'Записать');
+    go.type = 'button';
+    go.disabled = true;
+    go.onclick = function () { send(c); };
+    c.appendChild(go);
+
+    c.appendChild(el('div', 'rec'));
+    return c;
+  }
+
+  function paint(data) {
+    MOVES.forEach(function (move) {
+      var c = box.querySelector('[data-move="' + move + '"]');
+      var d = data['движения'][move] || {};
+      var last = d['последнее'];
+      c.querySelector('.was').innerHTML = last
+        ? 'прошлый раз ' + last['дата'].split('-').reverse().slice(0, 2).join('.') +
+          ' — <b>' + last['подходы'].join(' + ') + '</b> = ' + last['сумма']
+        : 'записей пока нет';
+      var r = d['рекорд'] || {}, y = d['загод'] || {};
+      var rec = c.querySelector('.rec');
+      rec.innerHTML = '';
+      var left = el('span');
+      // Год — то, что реально можно побить сегодня. Всё время — просто память.
+      left.innerHTML = 'за год: подход <b>' + (y['подход'] || 0) +
+        '</b>, занятие <b>' + (y['занятие'] || 0) + '</b>';
+      rec.appendChild(left);
+      var right = el('span', 'dim');
+      right.textContent = 'всего ' + (d['занятий'] || 0) +
+        ' · пик ' + (r['подход'] || 0) + '/' + (r['занятие'] || 0);
+      rec.appendChild(right);
+    });
+  }
+
+  function send(c) {
+    var move = c.dataset.move;
+    var v = values(c);
+    if (!v.length) { return; }
+    var was = state[move] || { 'подход': 0, 'занятие': 0 };   // рекорд года ДО записи
+    var go = c.querySelector('.go');
+    go.disabled = true;
+    stat('сохранение…');
+
+    fetch('/api/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        'упражнение': move, 'подходы': v, 'дата': fixed
+      })
+    }).then(function (r) {
+      return r.json().then(function (d) {
+        if (!r.ok) { throw new Error(d['ошибка'] || 'сервер отказал'); }
+        return d;
+      });
+    }).then(function (d) {
+      remember(d);
+      paint(d);
+      // Зелёные ячейки Михаил раньше красил руками. Рекорд считается сам.
+      var now = d['движения'][move]['загод'];
+      var beat = now['подход'] > was['подход'] || now['занятие'] > was['занятие'];
+      stat('сохранено');
+      // Всплывашку бережём для рекорда: если она выскакивает на каждую
+      // запись, на рекорд перестаёшь обращать внимание.
+      if (beat) { say('Рекорд! ' + move + ' — ' + v.join(' + '), 'win'); }
+      [].forEach.call(c.querySelectorAll('.sets input'), function (i) { i.value = ''; });
+      check(c);
+    }).catch(function (e) {
+      stat(String(e.message || e), true);
+      check(c);
+    });
+  }
+
+  var state = {};
+  function remember(d) {
+    MOVES.forEach(function (m) { state[m] = d['движения'][m]['загод']; });
+  }
+
+  MOVES.forEach(function (m) { box.appendChild(card(m)); });
+
+  // Барабаны встают туда, где их оставили в прошлый раз. Первый запуск —
+  // сегодняшний день; он же сразу считается подтверждённым, иначе на
+  // пустом дневнике кнопка «Записать» была бы заблокирована с порога.
+  try { fixed = localStorage.getItem(KEY) || null; } catch (e) { fixed = null; }
+
+  stat('загрузка…');
+  fetch('/api/state').then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!fixed) { fixed = d['сегодня']; }
+      buildPicker(d['сегодня']);
+      remember(d);
+      paint(d);
+      MOVES.forEach(function (m) {
+        check(box.querySelector('[data-move="' + m + '"]'));
+      });
+      stat('сохранено');
+    })
+    .catch(function () { stat('нет связи', true); });
+}());
+</script>
+</body>
+</html>
