@@ -12,6 +12,13 @@
   --muted: #8b837a;
   --line: #e3ded7;
   --accent: #2f6f4e;
+  /* Высота одного деления барабана: и шаг прокрутки, и расстояние
+     между соседними датами. Отсюда её берут и вёрстка, и скрипт —
+     раньше число стояло в двух местах и однажды разъехалось. */
+  --step: 42px;
+  /* Полоса-прицел чуть выше деления: выбранная дата так читается
+     крупнее соседних, не растаскивая при этом сам барабан. */
+  --aim: 50px;
   --gold: #b8860b;
 }
 * { box-sizing: border-box; }
@@ -115,63 +122,73 @@ h1 {
 .pick {
   display: flex; align-items: center;
   justify-content: space-between;
-  padding: 6px 14px 8px 8px;
+  /* Снизу почти без отступа: карточки идут сразу за барабанами. */
+  padding: 6px 14px 0 8px;
 }
 
+/* Ни подложки, ни рамки: барабаны лежат прямо на фоне страницы.
+   Единственное, что их выделяет, — зелёная полоса-прицел. */
 .wheels {
   position: relative;
   display: flex; gap: 2px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 12px;
   padding: 0 8px;
 }
-/* Полоса-прицел по центру: видно, какое значение выбрано. */
+/* Полоса-прицел по центру: видно, какое значение выбрано.
+   Высота равна делению барабана — иначе прицел «плывёт» мимо цифры. */
 .wheels::before {
   content: ''; position: absolute; left: 5px; right: 5px;
-  top: 50%; height: 44px; margin-top: -22px;
+  top: 50%; height: var(--aim); margin-top: calc(var(--aim) / -2);
   background: rgba(47,111,78,.07);
   border-top: 1px solid rgba(47,111,78,.25);
   border-bottom: 1px solid rgba(47,111,78,.25);
   border-radius: 8px; pointer-events: none;
 }
 .wheel {
-  height: 132px;             /* ровно три деления по 44 px */
+  height: calc(var(--step) * 3);   /* ровно три деления */
   overflow-y: scroll;
   scroll-snap-type: y mandatory;
   scrollbar-width: none;
   -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
   text-align: center;
-  /* Края растворяются — оттого и читается как барабан, а не как список. */
-  -webkit-mask-image: linear-gradient(180deg, transparent, #000 22%, #000 78%, transparent);
-  mask-image: linear-gradient(180deg, transparent, #000 22%, #000 78%, transparent);
+  /* Края растворяются — оттого и читается как барабан, а не как список.
+     Растворение начинается почти сразу за прицелом: соседние даты видно,
+     но они уходят в фон и не спорят с выбранной. */
+  -webkit-mask-image: linear-gradient(180deg, transparent 2%, rgba(0,0,0,.18) 20%, #000 40%, #000 60%, rgba(0,0,0,.18) 80%, transparent 98%);
+  mask-image: linear-gradient(180deg, transparent 2%, rgba(0,0,0,.18) 20%, #000 40%, #000 60%, rgba(0,0,0,.18) 80%, transparent 98%);
 }
 .wheel::-webkit-scrollbar { display: none; }
-.wheel ul { list-style: none; margin: 0; padding: 44px 0; }
+.wheel ul { list-style: none; margin: 0; padding: var(--step) 0; }
 .wheel li {
-  height: 44px; line-height: 44px;
+  height: var(--step); line-height: var(--step);
   scroll-snap-align: center;
-  font-size: 19px; color: #bdb6ac;
-  transition: color .12s ease;
+  font-size: 17px; color: #bdb6ac;
+  /* Масштабировать соседние деления нельзя: transform меняет и то, что
+     возвращает getBoundingClientRect, и геометрию scroll-snap. Разницу
+     держим шрифтом и растворением по краям. */
+  transition: color .12s ease, font-size .12s ease;
   cursor: pointer;
 }
-.wheel li.on { color: var(--fg); font-weight: 600; font-size: 21px; }
+.wheel li.on {
+  color: var(--fg); font-weight: 600; font-size: 23px;
+}
 .wheel.day { width: 54px; }
 .wheel.mon { width: 64px; }
 .wheel.year { width: 72px; }
 
-/* Подтверждение даты. Тусклая — значит показанное уже записано. */
+/* Подтверждение даты. Тусклая — значит показанное уже записано.
+   Размер в высоту равен прицелу на барабане: две части одного действия
+   должны выглядеть как пара, а не как кнопка и что-то рядом. */
 .fix {
-  width: 62px; height: 62px; flex: 0 0 auto;
-  border: 0; border-radius: 16px;
+  width: var(--aim); height: var(--aim); flex: 0 0 auto;
+  border: 0; border-radius: 14px;
   background: var(--accent); color: #fff;
-  font: inherit; font-size: 26px; font-weight: 600;
+  font: inherit; font-size: 24px; font-weight: 600;
   cursor: pointer;
   transition: background .15s ease, opacity .15s ease;
 }
 .fix:disabled { background: #cfd8d2; color: #f2f5f3; cursor: default; }
-.fix.done { font-size: 15px; }
+.fix.done { font-size: 14px; }
 
 .move {
   background: var(--card);
@@ -180,11 +197,16 @@ h1 {
   margin: 10px 16px;
   padding: 14px;
 }
-.move h2 {
-  margin: 0 0 2px; font-size: 17px; font-weight: 600;
+/* Название и дата прошлого раза — одной строкой, по краям.
+   Раньше дата занимала отдельную строку целиком ради трёх слов. */
+.top {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; margin-bottom: 12px;
 }
-.was { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
-.was b { color: var(--fg); font-weight: 600; }
+.move h2 {
+  margin: 0; font-size: 17px; font-weight: 600;
+}
+.was { font-size: 13px; color: var(--muted); white-space: nowrap; }
 
 .sets { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 /* Поле на подход, а не одна строка «9 7 5»: на телефоне так вылезает
@@ -339,7 +361,10 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
      как scrollTop / высоту деления. Событие scrollend поддержано не
      везде, поэтому досчитываем по таймеру после последнего движения. */
 
-  var STEP = 44;                 // высота одного деления; ДОЛЖНА совпадать с .wheel li в CSS
+  // Шаг берём из CSS, а не дублируем числом: высоту деления меняют
+  // в вёрстке, и скрипт обязан узнать об этом сам.
+  var STEP = parseFloat(getComputedStyle(document.documentElement)
+                          .getPropertyValue('--step')) || 49;
   var MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн',
                 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
   var KEY = 'спорт-дата';        // где помним последнюю подтверждённую дату
@@ -546,8 +571,10 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   function card(move) {
     var c = el('section', 'move');
     c.dataset.move = move;
-    c.appendChild(el('h2', null, move));
-    c.appendChild(el('div', 'was', '—'));
+    var top = el('div', 'top');
+    top.appendChild(el('h2', null, move));
+    top.appendChild(el('div', 'was', '—'));
+    c.appendChild(top);
 
     var sets = el('div', 'sets');
     for (var i = 0; i < START; i++) { sets.appendChild(field(c)); }
@@ -577,9 +604,10 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       var c = box.querySelector('[data-move="' + move + '"]');
       var d = data['движения'][move] || {};
       var last = d['последнее'];
-      c.querySelector('.was').innerHTML = last
-        ? 'прошлый раз ' + last['дата'].split('-').reverse().slice(0, 2).join('.') +
-          ' — <b>' + last['подходы'].join(' + ') + '</b> = ' + last['сумма']
+      // Только дата. Разбор подходов прошлого раза стоял тут же, но
+      // строка от этого читалась как формула, а не как ориентир.
+      c.querySelector('.was').textContent = last
+        ? 'прошлый раз ' + last['дата'].split('-').reverse().slice(0, 2).join('.')
         : 'записей пока нет';
       var r = d['рекорд'] || {}, y = d['загод'] || {};
       var rec = c.querySelector('.rec');
