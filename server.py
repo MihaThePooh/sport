@@ -16,6 +16,7 @@
 пересобирается из CSV в любой момент.
 """
 import csv
+import hashlib
 import json
 import os
 import re
@@ -32,8 +33,21 @@ BASE = Path(__file__).resolve().parent
 # Папку данных и порт можно увести в сторону: тесты пишут к себе, а не
 # в живой дневник. По умолчанию — рядом с кодом.
 DATA = Path(os.environ.get("SPORT_DATA") or (BASE / "data"))
-LOG = DATA / "log.csv"
 PAGE = BASE / "index.html"
+
+# Ключ доступа. Своего у дневника раньше не было вовсе: он жил на
+# localhost, и снаружи до него было не дотянуться. Как только перед ним
+# встал nginx, любой прохожий мог и читать записи, и дописывать свои.
+#
+# Устройство то же, что в тудушке: ключ — 256 бит случайности, никакого
+# имени и пароля. Проверять его не с чем и не надо — любой ключ нужной
+# формы открывает СВОЙ дневник. Чужой не подберёшь: это 2^256 вариантов.
+# Ключ лежит в папке данных, а не рядом с кодом: data/ и так вне git,
+# а тесты, которым папку подменяют, получают свой ключ и не трогают
+# боевой.
+TOKEN_FILE = DATA / "token"
+KEY_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+LISTS = DATA / "lists"
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("SPORT_PORT") or 8790)
@@ -53,7 +67,33 @@ EXPORT_PY = shutil.which("python3.12") or "python3"
 MAX_SETS = 12        # больше подходов за раз — почти наверняка опечатка
 MAX_REPS = 500       # приседаний бывает много, но не столько
 
-BOOK = DATA / "тренировки.xlsx"
+def token():
+    """Ключ хозяина. Нет файла — заводим при первом обращении."""
+    if not TOKEN_FILE.exists():
+        DATA.mkdir(parents=True, exist_ok=True)
+        TOKEN_FILE.write_text(os.urandom(32).hex(), encoding="utf-8")
+        TOKEN_FILE.chmod(0o600)
+    return TOKEN_FILE.read_text(encoding="utf-8").strip()
+
+
+def home_for(key):
+    """Папка дневника по ключу.
+
+    Ключ хозяина ведёт в саму data/ — там записи лежали до того, как
+    появились ключи, и трогать их с места незачем. Остальные получают
+    подпапку с именем из хеша: сам ключ в именах файлов не светится,
+    поэтому список папок ничего не выдаёт."""
+    if key.lower() == token().lower():
+        return DATA
+    return LISTS / hashlib.sha256(key.encode()).hexdigest()
+
+
+def log_of(home):
+    return home / "log.csv"
+
+
+def book_of(home):
+    return home / "тренировки.xlsx"
 
 # Статика отдаётся по белому списку, а не по пути из запроса. Так к
 # обходу каталогов (../../etc/passwd) просто нечего приложить.
@@ -70,28 +110,43 @@ STATIC = {
 # два процесса писали бы в один файл. Замок пропускает одного, а
 # «пришло ещё» запоминается флагом — после текущей сборки будет ровно
 # одна догоняющая, а не очередь из десяти.
-_book_lock = threading.Lock()
-_book_again = threading.Event()
+#
+# Замок теперь на каждый дневник свой: чужая сборка не должна заставлять
+# ждать твою. Словарь замков растёт по числу заходивших ключей, и его
+# самого тоже надо от гонки прикрыть — этим занят _locks_lock.
+_locks = {}
+_locks_lock = threading.Lock()
 
 
-def read():
+def lock_for(home):
+    """Замок и флаг «пришло ещё» для одного дневника."""
+    with _locks_lock:
+        pair = _locks.get(home)
+        if pair is None:
+            pair = (threading.Lock(), threading.Event())
+            _locks[home] = pair
+        return pair
+
+
+def read(home):
     """Весь дневник списком словарей. Нет файла — пустой дневник."""
-    if not LOG.exists():
+    log = log_of(home)
+    if not log.exists():
         return []
-    with LOG.open(encoding="utf-8", newline="") as f:
+    with log.open(encoding="utf-8", newline="") as f:
         return [r for r in csv.DictReader(f) if r.get("дата")]
 
 
-def write(rows):
+def write(home, rows):
     """Пишем через временный файл: обрыв на середине не оставит огрызок."""
-    DATA.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=str(DATA), suffix=".csv")
+    home.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(home), suffix=".csv")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             w = csv.DictWriter(f, fieldnames=HEAD)
             w.writeheader()
             w.writerows(rows)
-        os.replace(tmp, LOG)          # атомарная замена, без промежуточного состояния
+        os.replace(tmp, log_of(home))  # атомарная замена, без промежуточного состояния
     except BaseException:
         if os.path.exists(tmp):
             os.unlink(tmp)
@@ -134,9 +189,9 @@ def year_ago():
     return (date.today() - timedelta(days=YEAR)).isoformat()
 
 
-def state():
+def state(home):
     """То, что нужно форме: рекорды и последние занятия по каждому движению."""
-    rows = read()
+    rows = read(home)
     out = {"сегодня": date.today().isoformat(), "движения": {}}
     for m in MOVES:
         mine = [r for r in rows if r.get("упражнение") == m]
@@ -157,7 +212,7 @@ def state():
     return out
 
 
-def add(move, sets, when):
+def add(home, move, sets, when):
     """Добавить занятие. Запись за тот же день и то же движение заменяется:
     правишь опечатку — не плодишь дубль."""
     if move not in MOVES:
@@ -170,53 +225,57 @@ def add(move, sets, when):
     if any(x < 1 or x > MAX_REPS for x in sets):
         raise ValueError("повторения — от 1 до %d" % MAX_REPS)
 
-    rows = [r for r in read()
+    rows = [r for r in read(home)
             if not (r["дата"] == when and r["упражнение"] == move)]
     rows.append({"дата": when, "упражнение": move,
                  "подходы": " ".join(str(x) for x in sets),
                  "всего": sum(sets)})
     rows.sort(key=lambda r: (r["дата"], MOVES.index(r["упражнение"])
                              if r["упражнение"] in MOVES else 99))
-    write(rows)
+    write(home, rows)
 
 
-def build_book():
+def build_book(home):
     """Пересобрать .xlsx из CSV. Возвращает (получилось, пояснение).
 
     Экспорт живёт отдельным скриптом под python3.12: openpyxl стоит
     только там. Книга собирается ЦЕЛИКОМ заново, а не правится —
-    поэтому испортить её нечем."""
+    поэтому испортить её нечем.
+
+    Папку экспорт получает переменной окружения — тем же способом, каким
+    её задают тесты, так что чужой дневник собирается ровно так же."""
     try:
         done = subprocess.run(
             [EXPORT_PY, str(BASE / "export.py")],
             capture_output=True, text=True, timeout=120,
-            env={**os.environ, "SPORT_DATA": str(DATA)})
+            env={**os.environ, "SPORT_DATA": str(home)})
     except Exception as e:                           # noqa: BLE001
         return False, "не смог запустить сборку: %s" % e
-    if done.returncode != 0 or not BOOK.exists():
+    if done.returncode != 0 or not book_of(home).exists():
         hint = (done.stderr or done.stdout or "").strip().splitlines()
         return False, "сборка не удалась: %s" % (hint[-1] if hint else "без подробностей")
     return True, ""
 
 
-def rebuild_soon():
+def rebuild_soon(home):
     """Пересобрать книгу после записи, не заставляя браузер ждать.
 
-    Смысл в том, чтобы data/тренировки.xlsx всегда лежала свежей: зашёл
+    Смысл в том, чтобы тренировки.xlsx всегда лежала свежей: зашёл
     на сервер, забрал файл — и не гадаешь, всё ли туда попало."""
-    if not _book_lock.acquire(blocking=False):
-        _book_again.set()            # уже собираем — попросим повторить
+    lock, again = lock_for(home)
+    if not lock.acquire(blocking=False):
+        again.set()                  # уже собираем — попросим повторить
         return
     try:
         while True:
-            _book_again.clear()
-            ok, why = build_book()
+            again.clear()
+            ok, why = build_book(home)
             if not ok:
                 print("книга не пересобралась:", why, flush=True)
-            if not _book_again.is_set():
+            if not again.is_set():
                 break
     finally:
-        _book_lock.release()
+        lock.release()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -236,15 +295,68 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(blob)
 
+    def key(self):
+        """Ключ из заголовка или None.
+
+        Правильность проверять не с чем: любой ключ нужной формы открывает
+        свой собственный дневник. Форму проверяем строго — иначе строка
+        вроде «../..» доехала бы до имени папки."""
+        got = self.headers.get("Authorization", "")
+        if not got.startswith("Bearer "):
+            return None
+        k = got[7:].strip()
+        return k if KEY_RE.match(k) else None
+
+    def home(self):
+        """Папка дневника для этого запроса. Нет ключа — вернём 401 и None."""
+        k = self.key()
+        if not k:
+            self.deny(401, "нужен ключ доступа")
+            return None
+        return home_for(k)
+
+    def deny(self, code, why):
+        """Отказать — и обязательно дочитать тело запроса.
+
+        Соединение живёт дальше: HTTP/1.1 держит его открытым под
+        следующий запрос. Непрочитанные байты тела сервер примет за
+        начало этого следующего запроса, тот развалится, и клиент
+        получит 501 на ровном месте. Ошибка коварная: одиночный
+        отказ выглядит правильным, ломается только следующий за ним.
+
+        Слишком длинное тело не вычитываем: заявленную длину задаёт
+        клиент, и читать по его команде гигабайт — плохая идея. Такому
+        просто закрываем соединение."""
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = 0
+        if n > 65536:
+            self.close_connection = True
+        else:
+            while n > 0:
+                part = self.rfile.read(min(n, 8192))
+                if not part:
+                    break
+                n -= len(part)
+        self.send(code, {"ошибка": why})
+
     def do_GET(self):
         if self.path.split("?")[0] in ("/", "/index.html"):
             return self.send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
-        if self.path == "/api/state":
-            return self.send(200, state())
-        if self.path == "/api/log":
-            return self.send(200, read())
-        if self.path == "/api/xlsx":
-            return self.xlsx()
+        # Всё под /api/ — только с ключом. Страница и иконки открыты:
+        # без них некому будет ключ предъявить.
+        if self.path.startswith("/api/"):
+            home = self.home()
+            if home is None:
+                return
+            if self.path == "/api/state":
+                return self.send(200, state(home))
+            if self.path == "/api/log":
+                return self.send(200, read(home))
+            if self.path == "/api/xlsx":
+                return self.xlsx(home)
+            return self.send(404, {"ошибка": "нет такого метода"})
         got = STATIC.get(self.path.split("?")[0])
         if got:
             f = BASE / got[0]
@@ -253,17 +365,18 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, f.read_bytes(), got[1])
         self.send(404, {"ошибка": "нет такой страницы"})
 
-    def xlsx(self):
+    def xlsx(self, home):
         """Пересобирает книгу и отдаёт её файлом.
 
         Пересобираем перед отдачей, хотя она и так обновляется после
         каждой записи: замок держим на время сборки, чтобы не читать
         файл, пока фоновая пересборка его пишет."""
-        with _book_lock:
-            ok, why = build_book()
+        lock, _ = lock_for(home)
+        with lock:
+            ok, why = build_book(home)
             if not ok:
                 return self.send(500, {"ошибка": why})
-            blob = BOOK.read_bytes()
+            blob = book_of(home).read_bytes()
         self.send_response(200)
         self.send_header(
             "Content-Type",
@@ -280,13 +393,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path != "/api/add":
-            return self.send(404, {"ошибка": "нет такого метода"})
+            return self.deny(404, "нет такого метода")
+        home = self.home()
+        if home is None:
+            return
         try:
             n = int(self.headers.get("Content-Length") or 0)
             if n > 4096:
+                self.close_connection = True
                 raise ValueError("слишком длинный запрос")
             body = json.loads(self.rfile.read(n) or b"{}")
-            add(body.get("упражнение"), body.get("подходы") or [],
+            add(home, body.get("упражнение"), body.get("подходы") or [],
                 body.get("дата") or date.today().isoformat())
         except ValueError as e:
             return self.send(400, {"ошибка": str(e)})
@@ -295,11 +412,12 @@ class Handler(BaseHTTPRequestHandler):
         # Ответ уходит сразу, книга дособирается следом. Ждать сборки
         # тут нельзя: openpyxl на большой таблице думает секунду-другую,
         # и кнопка «Записать» подвисала бы на ровном месте.
-        threading.Thread(target=rebuild_soon, daemon=True).start()
-        self.send(200, state())
+        threading.Thread(target=rebuild_soon, args=(home,), daemon=True).start()
+        self.send(200, state(home))
 
 
 if __name__ == "__main__":
     DATA.mkdir(parents=True, exist_ok=True)
+    token()                   # заводим ключ хозяина, если его ещё нет
     print("дневник тренировок: http://%s:%d" % (HOST, PORT))
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

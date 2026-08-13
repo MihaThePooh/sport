@@ -313,6 +313,41 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
 
   var MOVES = ['подтягивания', 'отжимания', 'приседания'];
   var START = 3;      // столько полей показываем сразу: обычный формат — три подхода
+
+  /* --- ключ доступа ------------------------------------------------------
+     Ни логина, ни пароля: дневник открывается ключом на 256 бит. Пришёл
+     по ссылке с ключом — забираем его и чистим адресную строку, чтобы
+     ключ не остался в истории браузера и в заголовке вкладки. Пришёл
+     без ключа — заводим свой: это новый человек и новый пустой дневник.
+
+     Ключ живёт в памяти браузера и привязан к имени сайта. Перенести
+     дневник на другой адрес — значит один раз открыть его со ссылкой. */
+  var ACCESS = 'спорт.ключ';
+  var m = location.hash.match(/k=([a-f0-9]{64})/i);
+  if (m) {
+    try { localStorage.setItem(ACCESS, m[1].toLowerCase()); } catch (e) { /* приват */ }
+    history.replaceState(null, '', location.pathname);
+  }
+  var access = null;
+  try { access = localStorage.getItem(ACCESS); } catch (e) { access = null; }
+  if (!access) {
+    var buf = new Uint8Array(32);
+    window.crypto.getRandomValues(buf);
+    access = Array.prototype.map.call(buf, function (b) {
+      return ('0' + b.toString(16)).slice(-2);
+    }).join('');
+    try { localStorage.setItem(ACCESS, access); } catch (e) { /* приват — до перезагрузки */ }
+  }
+
+  /* Заголовки для запроса. Отдельной функцией, чтобы ключ подставлялся
+     в одном месте: забыть его в новом запросе — значит получить 401. */
+  function auth(extra) {
+    var h = { 'Authorization': 'Bearer ' + access };
+    if (extra) {
+      for (var k in extra) { if (extra.hasOwnProperty(k)) { h[k] = extra[k]; } }
+    }
+    return h;
+  }
   var box = document.getElementById('moves');
   var sayEl = document.getElementById('say');
   var stateEl = document.getElementById('state');
@@ -348,7 +383,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     stat('собираю таблицу…');
     // Файл пересобирается из записей на сервере, поэтому не ссылка,
     // а запрос: пока не собрался, показываем это в углу.
-    fetch('/api/xlsx').then(function (r) {
+    fetch('/api/xlsx', { headers: auth() }).then(function (r) {
       if (!r.ok) { return r.json().then(function (d) { throw new Error(d['ошибка']); }); }
       return r.blob();
     }).then(function (blob) {
@@ -669,7 +704,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
 
     fetch('/api/add', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: auth({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         'упражнение': move, 'подходы': v, 'дата': fixed
       })
@@ -709,7 +744,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   try { fixed = localStorage.getItem(KEY) || null; } catch (e) { fixed = null; }
 
   stat('загрузка…');
-  fetch('/api/state').then(function (r) { return r.json(); })
+  fetch('/api/state', { headers: auth() }).then(function (r) { return r.json(); })
     .then(function (d) {
       if (!fixed) { fixed = d['сегодня']; }
       buildPicker(d['сегодня']);
