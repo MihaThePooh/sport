@@ -15,13 +15,13 @@
   /* Высота одного деления барабана: и шаг прокрутки, и расстояние
      между соседними датами. Отсюда её берут и вёрстка, и скрипт —
      раньше число стояло в двух местах и однажды разъехалось. */
-  --step: 42px;
+  --step: 38px;
   /* Видимая высота барабана. Меньше трёх делений — соседние даты
      обрезаны по краям и не оставляют вокруг пустых полей. */
-  --view: 104px;
+  --view: 92px;
   /* Полоса-прицел чуть выше деления: выбранная дата так читается
      крупнее соседних, не растаскивая при этом сам барабан. */
-  --aim: 50px;
+  --aim: 44px;
   --gold: #b8860b;
 }
 * { box-sizing: border-box; }
@@ -136,8 +136,8 @@ h1 {
   display: flex; gap: 2px;
   padding: 0 8px;
 }
-/* Полоса-прицел по центру: видно, какое значение выбрано.
-   Высота равна делению барабана — иначе прицел «плывёт» мимо цифры. */
+/* Полоса-прицел по центру: видно, какое значение выбрано. Она чуть
+   выше деления, поэтому выбранная дата читается крупнее соседних. */
 .wheels::before {
   content: ''; position: absolute; left: 5px; right: 5px;
   top: 50%; height: var(--aim); margin-top: calc(var(--aim) / -2);
@@ -155,10 +155,10 @@ h1 {
   -webkit-overflow-scrolling: touch;
   text-align: center;
   /* Края растворяются — оттого и читается как барабан, а не как список.
-     Растворение начинается почти сразу за прицелом: соседние даты видно,
-     но они уходят в фон и не спорят с выбранной. */
-  -webkit-mask-image: linear-gradient(180deg, transparent 2%, rgba(0,0,0,.18) 20%, #000 40%, #000 60%, rgba(0,0,0,.18) 80%, transparent 98%);
-  mask-image: linear-gradient(180deg, transparent 2%, rgba(0,0,0,.18) 20%, #000 40%, #000 60%, rgba(0,0,0,.18) 80%, transparent 98%);
+     Соседние даты приглушены, но читаются: полностью прятать их нельзя —
+     тогда непонятно, в какую сторону крутить. */
+  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.18) 0%, rgba(0,0,0,.5) 14%, #000 34%, #000 66%, rgba(0,0,0,.5) 86%, rgba(0,0,0,.18) 100%);
+  mask-image: linear-gradient(180deg, rgba(0,0,0,.18) 0%, rgba(0,0,0,.5) 14%, #000 34%, #000 66%, rgba(0,0,0,.5) 86%, rgba(0,0,0,.18) 100%);
 }
 .wheel::-webkit-scrollbar { display: none; }
 .wheel ul {
@@ -171,30 +171,29 @@ h1 {
 .wheel li {
   height: var(--step); line-height: var(--step);
   scroll-snap-align: center;
-  font-size: 17px; color: #bdb6ac;
+  font-size: 16px; color: #b3aca2;
   /* Масштабировать соседние деления нельзя: transform меняет и то, что
      возвращает getBoundingClientRect, и геометрию scroll-snap. Разницу
-     держим шрифтом и растворением по краям. */
-  /* Кегль меняем без перехода: на быстрой прокрутке анимация роста
-     цифры читается как рывок. */
+     держим кеглем и растворением по краям — и меняем кегль без
+     перехода: на быстрой прокрутке анимация роста читается как рывок. */
   transition: color .12s ease;
   cursor: pointer;
 }
 .wheel li.on {
-  color: var(--fg); font-weight: 600; font-size: 23px;
+  color: var(--fg); font-weight: 600; font-size: 21px;
 }
-.wheel.day { width: 54px; }
-.wheel.mon { width: 64px; }
-.wheel.year { width: 72px; }
+.wheel.day { width: 48px; }
+.wheel.mon { width: 58px; }
+.wheel.year { width: 66px; }
 
 /* Подтверждение даты. Тусклая — значит показанное уже записано.
    Размер в высоту равен прицелу на барабане: две части одного действия
    должны выглядеть как пара, а не как кнопка и что-то рядом. */
 .fix {
   width: var(--aim); height: var(--aim); flex: 0 0 auto;
-  border: 0; border-radius: 14px;
+  border: 0; border-radius: 12px;
   background: var(--accent); color: #fff;
-  font: inherit; font-size: 24px; font-weight: 600;
+  font: inherit; font-size: 21px; font-weight: 600;
   cursor: pointer;
   transition: background .15s ease, opacity .15s ease;
 }
