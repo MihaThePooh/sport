@@ -219,7 +219,15 @@ def add(home, move, sets, when):
         raise ValueError("неизвестное упражнение")
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", when or ""):
         raise ValueError("дата не в формате ГГГГ-ММ-ДД")
-    sets = [int(x) for x in sets]
+    # Раньше тут был int(x), и он молча округлял: 7.5 записывалось как 7.
+    # Тихо менять присланное число — худший вид ошибки: в дневнике потом
+    # стоит правдоподобная цифра, которой не было. Лучше честный отказ.
+    # bool проверяем отдельно: в питоне True — это тоже int, и он
+    # превратился бы в один повтор.
+    for x in sets:
+        if isinstance(x, bool) or not isinstance(x, int):
+            raise ValueError("повторения должны быть целыми числами")
+    sets = list(sets)
     if not sets or len(sets) > MAX_SETS:
         raise ValueError("подходов должно быть от 1 до %d" % MAX_SETS)
     if any(x < 1 or x > MAX_REPS for x in sets):
