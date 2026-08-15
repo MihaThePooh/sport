@@ -225,7 +225,6 @@ h1 {
   cursor: pointer;
   transition: background .15s ease, opacity .15s ease;
 }
-.fix:disabled { background: #cfd8d2; color: #f2f5f3; cursor: default; }
 .fix.done { font-size: 14px; }
 
 .move {
@@ -323,7 +322,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
 
 <div class="pick">
   <div class="wheels" id="wheels"></div>
-  <button class="fix" id="fix" type="button" disabled
+  <button class="fix" id="fix" type="button"
           aria-label="подтвердить дату">✓</button>
 </div>
 
@@ -653,11 +652,14 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     wDay.fill(list, Math.min(keep || 1, n));
   }
 
+  /* Кнопка подтверждения намеренно всегда живая. Раньше она гасла, когда
+     барабаны стояли на уже подтверждённой дате: нажимать вроде нечего.
+     Но со стороны это читается как «сегодня записать нельзя» — дата своя,
+     а кнопка серая. Повторное подтверждение той же даты безвредно. */
   function relight() {
     var now = shown();
     var same = now === fixed;
-    fixBtn.disabled = same;
-    // Кнопки записи зависят от того же условия — обновляем вместе,
+    // Кнопки записи зависят от подтверждения — обновляем вместе,
     // иначе «Записать» остаётся активной на неподтверждённой дате.
     MOVES.forEach(function (m) {
       var c = box.querySelector('[data-move="' + m + '"]');
@@ -669,7 +671,10 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   }
 
   function buildPicker(today) {
-    var start = fixed || today;
+    // Барабаны встают на сегодня, а не на дату прошлой записи. Иначе
+    // назавтра после тренировки открываешь дневник и видишь вчерашнее
+    // число — а тренировку пишешь за сегодня.
+    var start = today;
     var y0 = Number(start.slice(0, 4)), m0 = Number(start.slice(5, 7)),
         d0 = Number(start.slice(8, 10));
 
@@ -702,7 +707,6 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     try { localStorage.setItem(KEY, fixed); } catch (e) { /* приватный режим */ }
     fixBtn.classList.add('done');
     fixBtn.textContent = 'ок';
-    fixBtn.disabled = true;
     MOVES.forEach(function (m) {
       check(box.querySelector('[data-move="' + m + '"]'));
     });
@@ -860,14 +864,15 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
 
   MOVES.forEach(function (m) { box.appendChild(card(m)); });
 
-  // Барабаны встают туда, где их оставили в прошлый раз. Первый запуск —
-  // сегодняшний день; он же сразу считается подтверждённым, иначе на
-  // пустом дневнике кнопка «Записать» была бы заблокирована с порога.
+  // Помним последнюю подтверждённую дату, чтобы после перезагрузки
+  // страницы посреди тренировки не подтверждать её заново.
   try { fixed = localStorage.getItem(KEY) || null; } catch (e) { fixed = null; }
 
   stat('загрузка…');
   fetch('/api/state', { headers: auth() }).then(function (r) { return r.json(); })
     .then(function (d) {
+      // Чистое устройство: сегодня считаем подтверждённым сразу, иначе на
+      // пустом дневнике «Записать» заблокирована с порога без причины.
       if (!fixed) { fixed = d['сегодня']; }
       buildPicker(d['сегодня']);
       remember(d);
