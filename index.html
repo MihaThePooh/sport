@@ -117,6 +117,70 @@ h1 {
   #menu .sheet { left: calc(50% - 272px); right: auto; width: 300px; }
 }
 
+/* Последние тренировки: полоски прямо в листе меню. Дата и упражнение
+   слева, подходы и сумма под ними, справа карандаш и корзина — те же
+   значки, что в тудушке, чтобы два приложения не спорили жестами. */
+#histbody[hidden] { display: none; }
+#histbody { padding: 2px 12px 10px; max-height: 52vh; overflow: auto; }
+.hrow {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid var(--line);
+}
+.hrow:last-child { border-bottom: 0; }
+.hmain { flex: 1 1 auto; min-width: 0; }
+.hday { font-size: 14px; font-weight: 600; }
+.hday span { color: var(--muted); font-weight: 400; }
+.hsets {
+  font-size: 13px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Селекторы через #histbody нарочно: у листа меню правило «#menu button»
+   с идентификатором, и по классу его не перебить — кнопки растягивало
+   на всю ширину полоски. */
+#histbody .pen, #histbody .del {
+  display: block; flex: 0 0 auto;
+  width: 38px; height: 38px; min-height: 0; padding: 7px;
+  border: 0; border-radius: 9px; background: none;
+  color: var(--muted); cursor: pointer;
+}
+#histbody .pen { color: var(--accent); }
+#histbody .del { color: #b03030; }
+#histbody .pen svg, #histbody .del svg { width: 100%; height: 100%; display: block; }
+#histbody .pen:active, #histbody .del:active { background: #f2efea; }
+/* Подтверждение удаления встаёт на место обеих кнопок, а не рядом:
+   промахнуться мимо «нет» в «да» на телефоне слишком легко. */
+.hask { display: flex; gap: 8px; flex: 0 0 auto; }
+#histbody .hask button {
+  display: block; width: auto; min-height: 0;
+  height: 38px; padding: 0 12px; border: 0; border-radius: 9px;
+  font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+#histbody .hask .yes { background: #b03030; color: #fff; }
+#histbody .hask .no { background: #e7e2da; color: var(--fg); }
+#histbody .none { margin: 8px 0; font-size: 14px; color: var(--muted); }
+
+/* Режим правки. Полоса поверх формы: без неё «Записать» в режиме
+   правки и «Записать» новую тренировку выглядят одинаково, и однажды
+   ты перезапишешь не тот день. */
+#edit[hidden] { display: none; }
+#edit {
+  margin: 10px 16px 0; padding: 10px 12px;
+  background: #fdf6e6; border: 1.5px solid var(--gold); border-radius: 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+#edit.увело { background: #fdeaea; border-color: #b03030; }
+#edit .txt { flex: 1 1 auto; font-size: 14px; line-height: 1.35; }
+#edit .txt b { display: block; font-size: 15px; }
+#edit button {
+  flex: 0 0 auto; height: 38px; padding: 0 14px;
+  border: 0; border-radius: 9px; background: #e7e2da;
+  font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+/* Правится одна карточка — её и подсвечиваем, остальные приглушаем,
+   чтобы не заполнить по привычке соседнюю. */
+.move.правится { border-color: var(--gold); box-shadow: 0 0 0 2px #f6e7c0; }
+.move.чужая { opacity: .45; }
+
 /* Перенос на другое устройство: раскрывается прямо в листе меню. */
 #mvbody[hidden] { display: none; }
 #mvbody { padding: 2px 12px 10px; }
@@ -326,6 +390,8 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
 
 <div id="menu" hidden>
   <div class="sheet">
+    <button id="hist" type="button">Последние 10 тренировок</button>
+    <div id="histbody" hidden></div>
     <button id="dl" type="button">Скачать таблицу .xlsx</button>
     <button id="mv" type="button">Перенести на другое устройство</button>
     <div id="mvbody" hidden></div>
@@ -336,6 +402,11 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   <div class="wheels" id="wheels"></div>
   <button class="fix" id="fix" type="button"
           aria-label="подтвердить дату">✓</button>
+</div>
+
+<div id="edit" hidden>
+  <div class="txt"></div>
+  <button type="button">Отмена</button>
 </div>
 
 <div id="moves"></div>
@@ -425,6 +496,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   function closeMenu() {
     menu.hidden = true;
     if (mvBody) { mvBody.hidden = true; }
+    if (histBody) { histBody.hidden = true; }
   }
   menu.onclick = function (e) {
     // Клик мимо листа закрывает — отдельный крестик не нужен.
@@ -433,6 +505,204 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') { closeMenu(); }
   });
+  /* --- последние тренировки -----------------------------------------------
+
+     Одна полоска — одно занятие: дата плюс упражнение. Это и есть ключ
+     записи на сервере, поэтому правка сводится к «подставить в форму и
+     записать заново»: add() заменит запись за тот же день и то же
+     движение. Второй редактор строить не нужно.  */
+
+  var PEN_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M14.5 4.5l5 5"/>' +
+    '<path d="M17 2l5 5-12.5 12.5L3 22l2.5-6.5z"/>' +
+    '</svg>';
+  var TRASH_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M9.4 5.7v-.5a2.6 2.6 0 0 1 5.2 0v.5"/>' +
+    '<path d="M3.6 8.4l.5-1.6a1.6 1.6 0 0 1 1.5-1.1h12.8a1.6 1.6 0 0 1 1.5 1.1l.5 1.6z"/>' +
+    '<path d="M5.9 9.2l.85 9.5a2 2 0 0 0 2 1.8h6.5a2 2 0 0 0 2-1.8l.85-9.5"/>' +
+    '<path d="M9.6 11.8v5.9M12 11.8v5.9M14.4 11.8v5.9"/>' +
+    '</svg>';
+
+  var histBtn = document.getElementById('hist');
+  var histBody = document.getElementById('histbody');
+  var HIST = 10;
+
+  function ддмм(iso) {
+    var ч = iso.split('-');
+    return ч[2] + '.' + ч[1] + (ч[0] === String(new Date().getFullYear())
+      ? '' : '.' + ч[0]);
+  }
+
+  histBtn.onclick = function () {
+    if (!histBody.hidden) { histBody.hidden = true; return; }
+    histBody.hidden = false;
+    histBody.innerHTML = '<p class="none">читаю журнал…</p>';
+    fetch('/api/log', { headers: auth() })
+      .then(function (r) { return r.json(); })
+      .then(рисоватьИсторию)
+      .catch(function () {
+        histBody.innerHTML = '<p class="none">нет связи с журналом</p>';
+      });
+  };
+
+  function рисоватьИсторию(rows) {
+    histBody.innerHTML = '';
+    if (!rows || !rows.length) {
+      histBody.innerHTML = '<p class="none">записей пока нет</p>';
+      return;
+    }
+    /* Журнал отсортирован по возрастанию даты — нам нужен хвост. Внутри
+       одного дня держим порядок упражнений как на экране, а не обратный:
+       список читают глазами сверху вниз и ищут в нём знакомую строку. */
+    var последние = rows.slice(-HIST).sort(function (a, b) {
+      if (a['дата'] !== b['дата']) { return a['дата'] < b['дата'] ? 1 : -1; }
+      return MOVES.indexOf(a['упражнение']) - MOVES.indexOf(b['упражнение']);
+    });
+    последние.forEach(function (r) {
+      histBody.appendChild(полоска(r));
+    });
+  }
+
+  function полоска(r) {
+    var row = el('div', 'hrow');
+    var main = el('div', 'hmain');
+    var day = el('div', 'hday');
+    day.innerHTML = ддмм(r['дата']) + ' <span>' + r['упражнение'] + '</span>';
+    main.appendChild(day);
+    var подходы = String(r['подходы'] || '').trim();
+    main.appendChild(el('div', 'hsets',
+      подходы.split(/\s+/).join(' + ') + ' = ' + (r['всего'] || '?')));
+    row.appendChild(main);
+
+    var pen = el('button', 'pen');
+    pen.type = 'button';
+    pen.title = 'править';
+    pen.setAttribute('aria-label', 'править запись ' + ддмм(r['дата']));
+    pen.innerHTML = PEN_SVG;
+    pen.onclick = function () { править(r); };
+    row.appendChild(pen);
+
+    var del = el('button', 'del');
+    del.type = 'button';
+    del.title = 'удалить';
+    del.setAttribute('aria-label', 'удалить запись ' + ддмм(r['дата']));
+    del.innerHTML = TRASH_SVG;
+    del.onclick = function () { спросить(row, pen, del, r); };
+    row.appendChild(del);
+    return row;
+  }
+
+  /* Подтверждение вместо confirm(): системное окно в PWA выглядит
+     чужим, а на iOS ещё и может не показаться вовсе. */
+  function спросить(row, pen, del, r) {
+    pen.hidden = true;
+    del.hidden = true;
+    var box = el('div', 'hask');
+    var yes = el('button', 'yes', 'удалить');
+    var no = el('button', 'no', 'нет');
+    yes.type = no.type = 'button';
+    function вернуть() {
+      box.remove();
+      pen.hidden = false;
+      del.hidden = false;
+    }
+    no.onclick = вернуть;
+    yes.onclick = function () {
+      yes.disabled = true;
+      удалить(r).then(вернуть);
+    };
+    box.appendChild(yes);
+    box.appendChild(no);
+    row.appendChild(box);
+  }
+
+  function удалить(r) {
+    return fetch('/api/del', {
+      method: 'POST',
+      headers: auth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ 'дата': r['дата'], 'упражнение': r['упражнение'] })
+    }).then(function (о) {
+      return о.json().then(function (d) {
+        if (!о.ok) { throw new Error(d['ошибка'] || 'код ' + о.status); }
+        return d;
+      });
+    }).then(function (d) {
+      say('удалено: ' + r['упражнение'] + ' за ' + ддмм(r['дата']));
+      // Правили именно её — режим правки уже не о чем.
+      if (правка && правка['дата'] === r['дата'] &&
+          правка['упражнение'] === r['упражнение']) { бросить(); }
+      remember(d);
+      paint(d);
+      MOVES.forEach(function (m) { check(box.querySelector('[data-move="' + m + '"]')); });
+      return fetch('/api/log', { headers: auth() })
+        .then(function (x) { return x.json(); })
+        .then(рисоватьИсторию);
+    }).catch(function (e) {
+      say('не удалил: ' + e.message, 'bad');
+    });
+  }
+
+  /* --- режим правки --- */
+  var editBar = document.getElementById('edit');
+  var правка = null;         // запись, которую сейчас правим
+
+  editBar.querySelector('button').onclick = function () { бросить(); };
+
+  function править(r) {
+    var card = box.querySelector('[data-move="' + r['упражнение'] + '"]');
+    if (!card) { say('это упражнение больше не ведётся', 'bad'); return; }
+
+    // Дата: ставим барабаны и сразу считаем подтверждённой — человек её
+    // не выбирал заново, он открыл существующую запись.
+    var ч = r['дата'].split('-');
+    wYear.set(Number(ч[0]));
+    wMon.set(Number(ч[1]));
+    refill();
+    wDay.set(Number(ч[2]));
+    fixed = r['дата'];
+    try { localStorage.setItem(KEY, fixed); } catch (e) { /* приватный режим */ }
+    relight();
+
+    // Подходы: сколько было, столько ячеек и покажем.
+    var было = String(r['подходы'] || '').trim().split(/\s+/)
+      .filter(function (x) { return x; });
+    var sets = card.querySelector('.sets');
+    sets.innerHTML = '';
+    for (var i = 0; i < Math.max(было.length, START); i++) {
+      var f = field(card);
+      f.value = было[i] || '';
+      sets.appendChild(f);
+    }
+
+    правка = r;
+    editBar.querySelector('.txt').innerHTML =
+      '<b>Правка записи</b>' + r['упражнение'] + ' за ' + ддмм(r['дата']);
+    editBar.hidden = false;
+    MOVES.forEach(function (m) {
+      var c = box.querySelector('[data-move="' + m + '"]');
+      c.classList.toggle('правится', m === r['упражнение']);
+      c.classList.toggle('чужая', m !== r['упражнение']);
+      check(c);
+    });
+    closeMenu();
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function бросить() {
+    правка = null;
+    editBar.hidden = true;
+    MOVES.forEach(function (m) {
+      var c = box.querySelector('[data-move="' + m + '"]');
+      c.classList.remove('правится', 'чужая');
+      [].forEach.call(c.querySelectorAll('.sets input'), function (i) { i.value = ''; });
+      check(c);
+    });
+  }
+
   /* --- перенос дневника на другое устройство ---
      Ключ лежит в адресе после решётки. Всё правее неё браузер на сервер
      не отправляет: ссылка не попадёт ни в логи nginx, ни в статистику. */
@@ -672,6 +942,18 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   function relight() {
     var now = shown();
     var same = now === fixed;
+    /* Правишь запись и крутанул барабаны — предупреждаем прямо в полосе.
+       Молчать тут нельзя: запись уйдёт на новую дату, а старая останется
+       на месте, и в дневнике станет две вместо одной. */
+    if (правка) {
+      var ушла = now !== правка['дата'];
+      editBar.classList.toggle('увело', ушла);
+      editBar.querySelector('.txt').innerHTML = ушла
+        ? '<b>Дата изменена</b>запись ляжет на ' + ддмм(now) +
+          ', а за ' + ддмм(правка['дата']) + ' останется прежняя'
+        : '<b>Правка записи</b>' + правка['упражнение'] +
+          ' за ' + ддмм(правка['дата']);
+    }
     // Кнопки записи зависят от подтверждения — обновляем вместе,
     // иначе «Записать» остаётся активной на неподтверждённой дате.
     MOVES.forEach(function (m) {
@@ -770,15 +1052,19 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     var go = card.querySelector('.go');
     var stale = shown() !== fixed;
     go.disabled = !v.length || stale;
+    // В режиме правки глагол другой: «Записать» и «Сохранить» должны
+    // читаться по-разному, иначе легко перезаписать не тот день.
+    var чиню = !!(правка && правка['упражнение'] === card.dataset.move);
+    var слово = чиню ? 'Сохранить' : 'Записать';
     if (stale) { go.textContent = 'Подтвердите дату'; return; }
-    if (!v.length) { go.textContent = 'Записать'; return; }
+    if (!v.length) { go.textContent = слово; return; }
     var сумма = v.reduce(function (a, b) { return a + b; }, 0);
     /* Кнопка делит строку с «+ подход», места мало. До четырёх подходов
        слагаемые влезают и служат проверкой перед отправкой; дальше
        остаётся сумма — сами цифры всё равно видны в ячейках выше. */
     go.textContent = v.length <= 4
-      ? 'Записать: ' + v.join('+') + ' = ' + сумма
-      : 'Записать: ' + сумма;
+      ? слово + ': ' + v.join('+') + ' = ' + сумма
+      : слово + ': ' + сумма;
   }
 
   function card(move) {
@@ -883,6 +1169,13 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       // Всплывашку бережём для рекорда: если она выскакивает на каждую
       // запись, на рекорд перестаёшь обращать внимание.
       if (beat) { say('Рекорд! ' + move + ' — ' + v.join(' + '), 'win'); }
+      // Правку закрываем сами: иначе жёлтая полоса висит над формой,
+      // и следующая тренировка пишется «в режиме правки».
+      if (правка && правка['упражнение'] === move) {
+        say('запись за ' + ддмм(fixed) + ' обновлена');
+        бросить();
+        return;
+      }
       [].forEach.call(c.querySelectorAll('.sets input'), function (i) { i.value = ''; });
       check(c);
     }).catch(function (e) {

@@ -243,6 +243,22 @@ def add(home, move, sets, when):
     write(home, rows)
 
 
+def drop(home, move, when):
+    """Убрать занятие. Ключ тот же, что у add: дата плюс движение.
+
+    Если такой записи нет — это не ошибка ввода, а расхождение с тем,
+    что человек видел на экране: список у него мог устареть. Возвращаем
+    честный отказ, чтобы интерфейс перечитал журнал, а не молчал."""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", when or ""):
+        raise ValueError("дата не в формате ГГГГ-ММ-ДД")
+    rows = read(home)
+    left = [r for r in rows
+            if not (r["дата"] == when and r["упражнение"] == move)]
+    if len(left) == len(rows):
+        raise LookupError("такой записи уже нет")
+    write(home, left)
+
+
 def build_book(home):
     """Пересобрать .xlsx из CSV. Возвращает (получилось, пояснение).
 
@@ -400,7 +416,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(blob)
 
     def do_POST(self):
-        if self.path != "/api/add":
+        if self.path not in ("/api/add", "/api/del"):
             return self.deny(404, "нет такого метода")
         home = self.home()
         if home is None:
@@ -411,8 +427,14 @@ class Handler(BaseHTTPRequestHandler):
                 self.close_connection = True
                 raise ValueError("слишком длинный запрос")
             body = json.loads(self.rfile.read(n) or b"{}")
-            add(home, body.get("упражнение"), body.get("подходы") or [],
-                body.get("дата") or date.today().isoformat())
+            if self.path == "/api/del":
+                drop(home, body.get("упражнение"),
+                     body.get("дата") or "")
+            else:
+                add(home, body.get("упражнение"), body.get("подходы") or [],
+                    body.get("дата") or date.today().isoformat())
+        except LookupError as e:
+            return self.send(404, {"ошибка": str(e)})
         except ValueError as e:
             return self.send(400, {"ошибка": str(e)})
         except Exception as e:                       # noqa: BLE001 — наружу не пускаем
