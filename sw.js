@@ -8,7 +8,7 @@
 /* Версию поднимаем при замене иконок и прочей статики: старый кэш
    чистится на активации, и лаунчер заберёт новые файлы, а не те,
    что уже лежат. */
-var CACHE = 'sport-v2';
+var CACHE = 'sport-v3';   // мио-серии: поменялся index.html
 var SHELL = ['/', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', function (e) {
