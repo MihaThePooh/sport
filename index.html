@@ -181,6 +181,33 @@ h1 {
 .move.правится { border-color: var(--gold); box-shadow: 0 0 0 2px #f6e7c0; }
 .move.чужая { opacity: .45; }
 
+/* Разбор методов тренировки: раскрывается там же, в листе меню.
+
+   Почему внутри приложения, а не ссылкой на статью: читать про метод
+   приходится ровно в тот момент, когда стоишь у турника и не помнишь,
+   сколько отдыхать между кругами. Ссылка в такой момент — это выход
+   из приложения, поиск вкладки и потерянная мысль. */
+#learnbody[hidden] { display: none; }
+#learnbody {
+  padding: 2px 12px 10px; max-height: 62vh; overflow: auto;
+  font-size: 14px; line-height: 1.5;
+}
+#learnbody h3 {
+  margin: 12px 0 6px; font-size: 15px; font-weight: 600;
+}
+#learnbody h3:first-child { margin-top: 4px; }
+#learnbody p { margin: 0 0 8px; }
+#learnbody ul { margin: 0 0 8px; padding-left: 18px; }
+#learnbody li { margin: 0 0 4px; }
+#learnbody b { font-weight: 600; }
+#learnbody .plan {
+  background: #f2efea; border-radius: 8px;
+  padding: 8px 10px; margin: 0 0 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px; line-height: 1.5; white-space: pre-wrap;
+}
+#learnbody .note { color: var(--muted); font-size: 13px; }
+
 /* Перенос на другое устройство: раскрывается прямо в листе меню. */
 #mvbody[hidden] { display: none; }
 #mvbody { padding: 2px 12px 10px; }
@@ -291,12 +318,67 @@ h1 {
 }
 .fix.done { font-size: 14px; }
 
+/* Две страницы формы: обычная тренировка и мио-серия.
+
+   Почему свайп, а не переключатель сверху. Формат выбирается один раз
+   на всю тренировку и меняется редко; кнопка-переключатель заняла бы
+   место постоянно, а свайп ничего не занимает. Плюс краешек соседней
+   страницы всегда торчит с боку — это и есть подсказка, что там что-то
+   есть. Переключателем пришлось бы объяснять то же самое словами.
+
+   Механика — обычная горизонтальная прокрутка со scroll-snap: инерцию
+   и «долгий ход» даёт браузер, как у барабанов даты. Своя физика всегда
+   ощущается чужой. */
+#moves {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  /* Отступы по бокам — это и есть торчащий краешек соседней страницы */
+  padding: 0 22px;
+  gap: 12px;
+  scrollbar-width: none;
+}
+#moves::-webkit-scrollbar { display: none; }
+.page {
+  flex: 0 0 calc(100% - 44px);
+  scroll-snap-align: center;
+  scroll-snap-stop: always;      /* через страницу не перепрыгнуть */
+}
+/* Шапка страницы: без неё после свайпа непонятно, куда ты попал.
+   Особенно через месяц, когда мио-серии станут привычкой. */
+.page > .tag {
+  display: flex; align-items: center; gap: 6px;
+  margin: 8px 2px 0; font-size: 13px; color: var(--muted);
+  /* Одна строка и только одна: перенос двигал бы карточки вниз на
+     разную высоту, и страницы прыгали бы друг относительно друга */
+  white-space: nowrap; overflow: hidden;
+}
+.page > .tag b { font-size: 14px; color: var(--fg); font-weight: 600; }
+.page > .tag .dots { margin-left: auto; display: flex; gap: 5px; }
+.page > .tag .dots i {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--line); display: block;
+}
+.page > .tag .dots i.on { background: var(--accent); }
+.page[data-kind="мио"] > .tag b { color: var(--accent); }
+
 .move {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 12px;
-  margin: 10px 16px;
+  margin: 10px 0;
   padding: 14px;
+}
+/* Мио-карточка: первое поле — активационный подход, и его надо
+   отличать глазом от кругов, иначе строка «10 4 4 3» ничем не
+   отличается от обычных подходов. */
+.move[data-kind="мио"] .sets input.act {
+  width: 58px;
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.move .why {
+  margin: 8px 0 0; font-size: 12.5px; line-height: 1.4; color: var(--muted);
 }
 /* Название и дата прошлого раза — одной строкой, по краям.
    Раньше дата занимала отдельную строку целиком ради трёх слов. */
@@ -392,6 +474,8 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   <div class="sheet">
     <button id="hist" type="button">Последние 10 тренировок</button>
     <div id="histbody" hidden></div>
+    <button id="learn" type="button">Как тренироваться</button>
+    <div id="learnbody" hidden></div>
     <button id="dl" type="button">Скачать таблицу .xlsx</button>
     <button id="mv" type="button">Перенести на другое устройство</button>
     <div id="mvbody" hidden></div>
@@ -421,6 +505,20 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   var MOVES = ['подтягивания', 'отжимания', 'приседания'];
   var START = 3;      // столько полей показываем сразу: обычный формат — три подхода
   var MAX_SETS = 12;  // столько же стоит в server.py — там же и отказ, если обойти
+
+  /* Форматы занятия. Пустая строка — обычная тренировка: так же она
+     лежит и в CSV, и старые записи читаются без единой правки.
+
+     Мио-серия: первый подход почти до отказа, дальше короткие круги
+     по 3-5 повторений через 20-30 секунд. Смысл — в утомлении: на
+     свежую мышцу тяжёлые волокна не включаются, а после первого
+     подхода организму больше нечем работать, и он включает их
+     с первого же повтора круга. */
+  var NORMAL = '';
+  var MYO = 'мио';
+  var KINDS = [NORMAL, MYO];        // порядок страниц: слева обычная, справа мио
+  var MYO_START = 5;                // активационный подход плюс четыре круга
+  var PAGEKEY = 'спорт-страница';   // какую страницу человек смотрел в прошлый раз
 
   /* --- ключ доступа ------------------------------------------------------
      Ни логина, ни пароля: дневник открывается ключом на 256 бит. Пришёл
@@ -469,6 +567,19 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     return h;
   }
   var box = document.getElementById('moves');
+
+  /* Карточек стало вдвое больше: одно движение живёт на двух страницах,
+     в двух форматах. Почти всё, что раньше искало карточку по движению,
+     теперь обязано пройти по обеим — иначе половина формы живёт своей
+     жизнью: кнопки не гаснут, рекорды не обновляются. */
+  function eachCard(fn) {
+    [].forEach.call(box.querySelectorAll('.move'), fn);
+  }
+
+  function cardOf(move, kind) {
+    return box.querySelector('.page[data-kind="' + (kind || '') + '"] ' +
+                             '[data-move="' + move + '"]');
+  }
   var sayEl = document.getElementById('say');
   var stateEl = document.getElementById('state');
   var sayTimer = null;
@@ -574,8 +685,12 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     day.innerHTML = ддмм(r['дата']) + ' <span>' + r['упражнение'] + '</span>';
     main.appendChild(day);
     var подходы = String(r['подходы'] || '').trim();
+    // Мио-серию помечаем прямо в строке: «10 + 4 + 4 + 3» без пометки
+    // читается как неудачная тренировка, хотя это другой метод.
+    var мио = (r['формат'] || '') === MYO;
     main.appendChild(el('div', 'hsets',
-      подходы.split(/\s+/).join(' + ') + ' = ' + (r['всего'] || '?')));
+      (мио ? 'мио ' : '') + подходы.split(/\s+/).join(' + ') +
+      ' = ' + (r['всего'] || '?')));
     row.appendChild(main);
 
     var pen = el('button', 'pen');
@@ -637,7 +752,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
           правка['упражнение'] === r['упражнение']) { бросить(); }
       remember(d);
       paint(d);
-      MOVES.forEach(function (m) { check(box.querySelector('[data-move="' + m + '"]')); });
+      eachCard(check);
       return fetch('/api/log', { headers: auth() })
         .then(function (x) { return x.json(); })
         .then(рисоватьИсторию);
@@ -653,8 +768,12 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   editBar.querySelector('button').onclick = function () { бросить(); };
 
   function править(r) {
-    var card = box.querySelector('[data-move="' + r['упражнение'] + '"]');
+    // Формат берём из самой записи: мио-серию правим на мио-странице,
+    // иначе круги лягут в поля обычных подходов и уедут без пометки.
+    var kind = (r['формат'] || '') === MYO ? MYO : NORMAL;
+    var card = cardOf(r['упражнение'], kind);
     if (!card) { say('это упражнение больше не ведётся', 'bad'); return; }
+    toPage(kind, false);
 
     // Дата: ставим барабаны и сразу считаем подтверждённой — человек её
     // не выбирал заново, он открыл существующую запись.
@@ -672,8 +791,10 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       .filter(function (x) { return x; });
     var sets = card.querySelector('.sets');
     sets.innerHTML = '';
-    for (var i = 0; i < Math.max(было.length, START); i++) {
+    var минимум = kind === MYO ? MYO_START : START;
+    for (var i = 0; i < Math.max(было.length, минимум); i++) {
       var f = field(card);
+      if (kind === MYO && i === 0) { f.classList.add('act'); }
       f.value = было[i] || '';
       sets.appendChild(f);
     }
@@ -682,10 +803,10 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     editBar.querySelector('.txt').innerHTML =
       '<b>Правка записи</b>' + r['упражнение'] + ' за ' + ддмм(r['дата']);
     editBar.hidden = false;
-    MOVES.forEach(function (m) {
-      var c = box.querySelector('[data-move="' + m + '"]');
-      c.classList.toggle('правится', m === r['упражнение']);
-      c.classList.toggle('чужая', m !== r['упражнение']);
+    eachCard(function (c) {
+      var своя = c === card;
+      c.classList.toggle('правится', своя);
+      c.classList.toggle('чужая', !своя);
       check(c);
     });
     closeMenu();
@@ -695,8 +816,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   function бросить() {
     правка = null;
     editBar.hidden = true;
-    MOVES.forEach(function (m) {
-      var c = box.querySelector('[data-move="' + m + '"]');
+    eachCard(function (c) {
       c.classList.remove('правится', 'чужая');
       [].forEach.call(c.querySelectorAll('.sets input'), function (i) { i.value = ''; });
       check(c);
@@ -780,6 +900,88 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   document.getElementById('mv').onclick = function () {
     fillMover();
     mvBody.hidden = !mvBody.hidden;
+  };
+
+  /* --- разбор методов ---
+
+     Текст лежит прямо здесь, а не приезжает с сервера: он не меняется
+     от тренировки к тренировке, и в офлайне (подвал, спортзал, метро)
+     обязан открываться так же, как на связи. */
+  var learnBody = document.getElementById('learnbody');
+  var LEARN = [
+    '<h3>Мио-серия: что это</h3>',
+    '<p>Один подход до <b>около-отказа</b>, дальше короткие круги ' +
+      'по 3-5 повторений через 20-30 секунд отдыха. Придумал метод ' +
+      'норвежец Бёрге Фагерли; в исследованиях это семейство называют ' +
+      '<b>rest-pause</b>.</p>',
+
+    '<h3>Почему это работает</h3>',
+    '<p>Мышца включает волокна по очереди: сначала выносливые и слабые, ' +
+      'и только когда их не хватает — сильные, которые и растут. ' +
+      'На свежую мышцу до сильных дело просто не доходит: подход ' +
+      'заканчивается раньше.</p>',
+    '<p>Двадцати секунд отдыха мало, чтобы восстановиться. Поэтому ' +
+      'в каждом следующем круге сильные волокна включаются <b>с первого ' +
+      'же повтора</b> — ради них всё и затевается.</p>',
+
+    '<h3>Как делать</h3>',
+    '<div class="plan">' +
+      'активационный подход\n' +
+      '  8-10 повторов, остановиться\n' +
+      '  за 1-2 повтора до отказа\n' +
+      '\n' +
+      'отдых 20-30 секунд\n' +
+      'круг: 3-5 повторов\n' +
+      '  ... и так 4-5 кругов,\n' +
+      '  пока выходит хотя бы 3\n' +
+      '\n' +
+      'две серии за тренировку,\n' +
+      'между ними отдых 3 минуты' +
+      '</div>',
+    '<p class="note">Пример: 10 + 4 + 4 + 3 + 3 — это 24 повтора ' +
+      'за пять минут вместо двенадцати.</p>',
+
+    '<h3>Чего метод НЕ делает</h3>',
+    '<ul>' +
+      '<li>Не даёт «в пять раз больше тоннажа». Тоннаж — это вес на ' +
+        'повторы; при том же весе и меньшем числе повторов он ниже. ' +
+        'Выше мощность, то есть работа за единицу времени, — а мышцу ' +
+        'растит не она.</li>' +
+      '<li>Не обгоняет обычные подходы при равном объёме. Мета-анализ ' +
+        '2025 года: выигрыш есть в силе, по росту мышц разница ' +
+        'в пределах погрешности.</li>' +
+      '<li>Не отменяет прогрессию. Стало легко — вешай рюкзак.</li>' +
+    '</ul>',
+    '<p><b>Настоящая выгода — время.</b> Тот же стимул за половину ' +
+      'тренировки и с меньшей общей усталостью.</p>',
+
+    '<h3>Что важнее самой схемы</h3>',
+    '<ul>' +
+      '<li><b>Близость к отказу.</b> Подход «до усталости» и подход, ' +
+        'где последний повтор еле идёт, — разные вещи.</li>' +
+      '<li><b>Полная амплитуда.</b> Внизу руки прямые, опускание ' +
+        'на два счёта, без рывка.</li>' +
+      '<li><b>Объём за неделю.</b> Три подхода трижды в неделю — ' +
+        'нижняя граница; две мио-серии дают эквивалент 12-15.</li>' +
+      '<li><b>Прогрессия.</b> Следи за числом кругов, а не за суммой: ' +
+        'пять кругов подряд — повод добавить вес.</li>' +
+    '</ul>',
+
+    '<h3>Осторожно</h3>',
+    '<p>Подтягивания бьют по локтям и плечам. Три раза в неделю ' +
+      'до около-отказа — потолок. Заболел локоть — снимай круги, ' +
+      'а не терпи.</p>',
+
+    '<h3>Обычная тренировка</h3>',
+    '<p>Никуда не делась и не хуже: подходы до усталости, отдых ' +
+      'сколько нужно. Пиши её на левой странице, мио-серии — ' +
+      'на правой; в дневнике они помечены отдельно, и через полгода ' +
+      'видно, что чем было.</p>'
+  ].join('');
+
+  document.getElementById('learn').onclick = function () {
+    if (!learnBody.innerHTML) { learnBody.innerHTML = LEARN; }
+    learnBody.hidden = !learnBody.hidden;
   };
 
   document.getElementById('dl').onclick = function () {
@@ -956,10 +1158,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     }
     // Кнопки записи зависят от подтверждения — обновляем вместе,
     // иначе «Записать» остаётся активной на неподтверждённой дате.
-    MOVES.forEach(function (m) {
-      var c = box.querySelector('[data-move="' + m + '"]');
-      if (c) { check(c); }
-    });
+    eachCard(check);
     if (same && fixBtn.classList.contains('done')) { return; }
     fixBtn.classList.remove('done');
     fixBtn.textContent = '✓';
@@ -1002,9 +1201,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     try { localStorage.setItem(KEY, fixed); } catch (e) { /* приватный режим */ }
     fixBtn.classList.add('done');
     fixBtn.textContent = 'ок';
-    MOVES.forEach(function (m) {
-      check(box.querySelector('[data-move="' + m + '"]'));
-    });
+    eachCard(check);
     setTimeout(function () {
       fixBtn.classList.remove('done');
       fixBtn.textContent = '✓';
@@ -1049,15 +1246,21 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   // замечаешь через месяц и уже не починишь.
   function check(card) {
     var v = values(card);
+    var мио = card.dataset.kind === MYO;
     var go = card.querySelector('.go');
     var stale = shown() !== fixed;
-    go.disabled = !v.length || stale;
+    // Мио-серия из одного числа — это обычный подход. Сервер такое
+    // отвергает, и кнопка не должна обещать обратное.
+    var мало = мио && v.length < 2;
+    go.disabled = !v.length || stale || мало;
     // В режиме правки глагол другой: «Записать» и «Сохранить» должны
     // читаться по-разному, иначе легко перезаписать не тот день.
-    var чиню = !!(правка && правка['упражнение'] === card.dataset.move);
+    var чиню = !!(правка && правка['упражнение'] === card.dataset.move &&
+                  (правка['формат'] || '') === (card.dataset.kind || ''));
     var слово = чиню ? 'Сохранить' : 'Записать';
     if (stale) { go.textContent = 'Подтвердите дату'; return; }
     if (!v.length) { go.textContent = слово; return; }
+    if (мало) { go.textContent = 'Нужен хотя бы один круг'; return; }
     var сумма = v.reduce(function (a, b) { return a + b; }, 0);
     /* Кнопка делит строку с «+ подход», места мало. До четырёх подходов
        слагаемые влезают и служат проверкой перед отправкой; дальше
@@ -1067,16 +1270,25 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       : слово + ': ' + сумма;
   }
 
-  function card(move) {
+  function card(move, kind) {
+    var мио = kind === MYO;
     var c = el('section', 'move');
     c.dataset.move = move;
+    c.dataset.kind = kind;
     var top = el('div', 'top');
     top.appendChild(el('h2', null, move));
     top.appendChild(el('div', 'was', '—'));
     c.appendChild(top);
 
     var sets = el('div', 'sets');
-    for (var i = 0; i < START; i++) { sets.appendChild(field(c)); }
+    var сколько = мио ? MYO_START : START;
+    for (var i = 0; i < сколько; i++) {
+      var f = field(c);
+      // Первое поле мио-серии — активационный подход. Отличается и
+      // шириной, и рамкой: иначе через месяц не вспомнить, где что.
+      if (мио && i === 0) { f.classList.add('act'); }
+      sets.appendChild(f);
+    }
     c.appendChild(sets);
 
     var act = el('div', 'act');
@@ -1085,7 +1297,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
        нажал, поле под следующий подход уже ждёт с курсором внутри.
        Пустое поле сначала переиспользуем: десять пустых клеток от
        десяти нажатий — не то, что человек имел в виду. */
-    var more = el('button', 'more', '+ подход');
+    var more = el('button', 'more', мио ? '+ круг' : '+ подход');
     more.type = 'button';
     more.onclick = function () {
       var all = [].slice.call(sets.querySelectorAll('input'));
@@ -1110,33 +1322,47 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
 
     c.appendChild(act);
 
+    if (мио) {
+      c.appendChild(el('p', 'why',
+        'Первое поле — активационный подход: до отказа минус 1-2 повтора. ' +
+        'Дальше круги по 3-5 повторений через 20-30 секунд отдыха, ' +
+        'пока получается хотя бы три.'));
+    }
+
     c.appendChild(el('div', 'rec'));
     return c;
   }
 
   function paint(data) {
     MOVES.forEach(function (move) {
-      var c = box.querySelector('[data-move="' + move + '"]');
       var d = data['движения'][move] || {};
       var last = d['последнее'];
-      // Только дата. Разбор подходов прошлого раза стоял тут же, но
-      // строка от этого читалась как формула, а не как ориентир.
-      c.querySelector('.was').textContent = last
-        ? 'прошлый раз ' + last['дата'].split('-').reverse().slice(0, 2).join('.')
-        : 'записей пока нет';
-      var r = d['рекорд'] || {}, y = d['загод'] || {};
-      var rec = c.querySelector('.rec');
-      rec.innerHTML = '';
-      var left = el('span');
-      // Год — то, что реально можно побить сегодня. Всё время — просто память.
-      left.innerHTML = 'за год: подход <b>' + (y['подход'] || 0) +
-        '</b>, занятие <b>' + (y['занятие'] || 0) + '</b>';
-      rec.appendChild(left);
-      var right = el('span', 'dim');
-      right.textContent = 'всего ' + (d['занятий'] || 0) +
-        ' · пик ' + (r['подход'] || 0) + '/' + (r['занятие'] || 0);
-      rec.appendChild(right);
+      KINDS.forEach(function (kind) { paintCard(cardOf(move, kind), d, last); });
     });
+  }
+
+  function paintCard(c, d, last) {
+    if (!c) { return; }
+    // Только дата. Разбор подходов прошлого раза стоял тут же, но
+    // строка от этого читалась как формула, а не как ориентир.
+    // Формат прошлого занятия дописываем: со страницы обычных подходов
+    // полезно видеть, что вчера была мио-серия, и наоборот.
+    c.querySelector('.was').textContent = last
+      ? 'прошлый раз ' + last['дата'].split('-').reverse().slice(0, 2).join('.') +
+        ((last['формат'] || '') === MYO ? ' · мио' : '')
+      : 'записей пока нет';
+    var r = d['рекорд'] || {}, y = d['загод'] || {};
+    var rec = c.querySelector('.rec');
+    rec.innerHTML = '';
+    var left = el('span');
+    // Год — то, что реально можно побить сегодня. Всё время — просто память.
+    left.innerHTML = 'за год: подход <b>' + (y['подход'] || 0) +
+      '</b>, занятие <b>' + (y['занятие'] || 0) + '</b>';
+    rec.appendChild(left);
+    var right = el('span', 'dim');
+    right.textContent = 'всего ' + (d['занятий'] || 0) +
+      ' · пик ' + (r['подход'] || 0) + '/' + (r['занятие'] || 0);
+    rec.appendChild(right);
   }
 
   function send(c) {
@@ -1152,7 +1378,8 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       method: 'POST',
       headers: auth({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
-        'упражнение': move, 'подходы': v, 'дата': fixed
+        'упражнение': move, 'подходы': v, 'дата': fixed,
+        'формат': c.dataset.kind || NORMAL
       })
     }).then(function (r) {
       return r.json().then(function (d) {
@@ -1171,7 +1398,8 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       if (beat) { say('Рекорд! ' + move + ' — ' + v.join(' + '), 'win'); }
       // Правку закрываем сами: иначе жёлтая полоса висит над формой,
       // и следующая тренировка пишется «в режиме правки».
-      if (правка && правка['упражнение'] === move) {
+      if (правка && правка['упражнение'] === move &&
+          (правка['формат'] || '') === (c.dataset.kind || '')) {
         say('запись за ' + ддмм(fixed) + ' обновлена');
         бросить();
         return;
@@ -1189,7 +1417,87 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     MOVES.forEach(function (m) { state[m] = d['движения'][m]['загод']; });
   }
 
-  MOVES.forEach(function (m) { box.appendChild(card(m)); });
+  /* Дека: две страницы, на каждой те же три движения.
+
+     Карточки не общие: у мио-серии свои поля, и переиспользовать одни
+     и те же клетки под два формата — верный способ однажды записать
+     круги как обычные подходы. */
+  KINDS.forEach(function (kind) {
+    var page = el('section', 'page');
+    page.dataset.kind = kind;
+
+    var tag = el('div', 'tag');
+    var name = el('b', null, kind === MYO ? 'Мио-серия' : 'Обычная тренировка');
+    tag.appendChild(name);
+    tag.appendChild(el('span', null,
+      kind === MYO ? '· круги через 20-30 с' : '· отдых сколько нужно'));
+    var dots = el('span', 'dots');
+    KINDS.forEach(function (k) {
+      var d = el('i');
+      if (k === kind) { d.classList.add('on'); }
+      dots.appendChild(d);
+    });
+    tag.appendChild(dots);
+    page.appendChild(tag);
+
+    MOVES.forEach(function (m) { page.appendChild(card(m, kind)); });
+    box.appendChild(page);
+  });
+
+  /* Какую страницу показать при открытии. Человек тренируется сериями
+     недель: если в прошлый раз он писал мио, завтра он почти наверняка
+     пишет мио, и заставлять его каждый раз свайпать — мелкая, но
+     ежедневная плата. */
+  function pageEl(kind) {
+    return box.querySelector('.page[data-kind="' + kind + '"]');
+  }
+
+  function toPage(kind, smooth) {
+    var page = pageEl(kind);
+    if (!page) { return; }
+    box.scrollTo({ left: page.offsetLeft - box.offsetLeft - 22,
+                   behavior: smooth ? 'smooth' : 'auto' });
+    отметить(kind);
+  }
+
+  // Точки-индикаторы одинаковы на обеих страницах: какая страница
+  // сейчас — видно, не доскроллив.
+  function отметить(kind) {
+    var at = KINDS.indexOf(kind);
+    [].forEach.call(box.querySelectorAll('.page .dots'), function (dots) {
+      [].forEach.call(dots.children, function (dot, i) {
+        dot.classList.toggle('on', i === at);
+      });
+    });
+    try { localStorage.setItem(PAGEKEY, kind); } catch (e) { /* приват */ }
+  }
+
+  /* Какая страница сейчас в кадре — считаем по прокрутке, а не по
+     событию свайпа: пролистать можно и колесом мыши, и клавишами. */
+  var pageTimer = null;
+  box.addEventListener('scroll', function () {
+    clearTimeout(pageTimer);
+    pageTimer = setTimeout(function () {
+      var mid = box.scrollLeft + box.clientWidth / 2;
+      var ближняя = KINDS[0];
+      var best = Infinity;
+      [].forEach.call(box.querySelectorAll('.page'), function (p) {
+        var центр = p.offsetLeft - box.offsetLeft + p.offsetWidth / 2;
+        var d = Math.abs(центр - mid);
+        if (d < best) { best = d; ближняя = p.dataset.kind; }
+      });
+      отметить(ближняя);
+    }, 90);
+  }, { passive: true });
+
+  // Открываемся на той странице, где человек был в прошлый раз: формат
+  // держится неделями, а свайп каждый день — мелкая, но ежедневная плата.
+  var стартовая = NORMAL;
+  try {
+    var сохранено = localStorage.getItem(PAGEKEY);
+    if (KINDS.indexOf(сохранено) >= 0) { стартовая = сохранено; }
+  } catch (e) { /* приват */ }
+  toPage(стартовая, false);
 
   // Помним последнюю подтверждённую дату, чтобы после перезагрузки
   // страницы посреди тренировки не подтверждать её заново.
@@ -1204,9 +1512,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       buildPicker(d['сегодня']);
       remember(d);
       paint(d);
-      MOVES.forEach(function (m) {
-        check(box.querySelector('[data-move="' + m + '"]'));
-      });
+      eachCard(check);
       stat('сохранено');
     })
     .catch(function () { stat('нет связи', true); });
