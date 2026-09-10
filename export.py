@@ -54,10 +54,14 @@ def load():
             sets = [int(x) for x in str(r.get("подходы", "")).split() if x.isdigit()]
             total = str(r.get("всего", "")).strip()
             total = int(total) if total.isdigit() else sum(sets)
+            # Формат занятия. Колонки может не быть вовсе (старый файл) —
+            # тогда это обычная тренировка.
+            kind = str(r.get("формат") or "").strip()
             # Занятие без подходов, но с суммой, — тоже занятие: в старой
             # таблице есть дни, где записана только она.
             if sets or total:
-                days.setdefault(when, {})[move] = {"подходы": sets, "всего": total}
+                days.setdefault(when, {})[move] = {"подходы": sets, "всего": total,
+                                                   "формат": kind}
     return dict(sorted(days.items()))
 
 
@@ -127,7 +131,14 @@ def build():
                     ws.cell(r, k, "").alignment = Alignment(horizontal="center")
                 continue
             sets, total = got["подходы"], got["всего"]
-            a = ws.cell(r, c, " + ".join(str(x) for x in sets) if sets else "—")
+            # Мио-серия читается иначе обычных подходов: первое число —
+            # активационный подход, дальше короткие круги. Помечаем прямо
+            # в ячейке, иначе через полгода «10 + 4 + 4 + 3» выглядит как
+            # неудачная тренировка, хотя это другой метод.
+            запись = " + ".join(str(x) for x in sets) if sets else "—"
+            if sets and got.get("формат") == "мио":
+                запись = "мио " + запись
+            a = ws.cell(r, c, запись)
             b = ws.cell(r, c + 1, total)
             a.alignment = Alignment(horizontal="center")
             b.alignment = Alignment(horizontal="center")
