@@ -30,6 +30,10 @@ LOG = DATA / "log.csv"
 OUT = DATA / "тренировки.xlsx"
 
 MOVES = ["подтягивания", "отжимания", "приседания"]
+# Тот же знак, что и в дневнике: внутри серии подходы через «+»,
+# между сериями — «\». Две мио-серии за день видно одним взглядом.
+SERIES_SEP = "\\"
+NOTE_HEAD = "комментарий"
 
 GREEN = PatternFill("solid", fgColor="C6E7D2")   # рекорд за 12 месяцев
 GOLD = PatternFill("solid", fgColor="F3E3B0")    # рекорд за всё время
@@ -51,17 +55,26 @@ def load():
             move = (r.get("упражнение") or "").strip()
             if not when or move not in MOVES:
                 continue
-            sets = [int(x) for x in str(r.get("подходы", "")).split() if x.isdigit()]
+            # Подходы разложены по сериям: за день их может быть несколько,
+            # и в ячейке они разделяются тем же знаком, что и в дневнике.
+            series = []
+            for part in str(r.get("подходы", "")).split(SERIES_SEP):
+                nums = [int(x) for x in part.split() if x.isdigit()]
+                if nums:
+                    series.append(nums)
+            sets = [x for one in series for x in one]
             total = str(r.get("всего", "")).strip()
             total = int(total) if total.isdigit() else sum(sets)
             # Формат занятия. Колонки может не быть вовсе (старый файл) —
             # тогда это обычная тренировка.
             kind = str(r.get("формат") or "").strip()
+            note = str(r.get("комментарий") or "").strip()
             # Занятие без подходов, но с суммой, — тоже занятие: в старой
             # таблице есть дни, где записана только она.
             if sets or total:
-                days.setdefault(when, {})[move] = {"подходы": sets, "всего": total,
-                                                   "формат": kind}
+                days.setdefault(when, {})[move] = {"подходы": sets, "серии": series,
+                                                   "всего": total, "формат": kind,
+                                                   "комментарий": note}
     return dict(sorted(days.items()))
 
 
@@ -120,6 +133,13 @@ def build():
         where[m] = col
         col += 2
 
+    # Комментарий — один на день, поэтому шапка у него в два яруса, как
+    # у даты: делить его по упражнениям незачем.
+    note_col = col
+    ws.cell(1, note_col, NOTE_HEAD)
+    ws.merge_cells(start_row=1, start_column=note_col, end_row=2, end_column=note_col)
+    col += 1
+
     for row in (1, 2):
         for c in range(1, col):
             cell = ws.cell(row, c)
@@ -171,7 +191,12 @@ def build():
             # активационный подход, дальше короткие круги. Помечаем прямо
             # в ячейке, иначе через полгода «10 + 4 + 4 + 3» выглядит как
             # неудачная тренировка, хотя это другой метод.
-            запись = " + ".join(str(x) for x in sets) if sets else "—"
+            # Внутри серии подходы через «+», серии между собой — через
+            # «\». Строка «9 + 3 + 3 \ 5 + 2 + 2» читается сразу: два
+            # захода за день, а не один длинный.
+            series = got.get("серии") or ([sets] if sets else [])
+            запись = (" %s " % SERIES_SEP).join(
+                " + ".join(str(x) for x in one) for one in series) or "—"
             if sets and got.get("формат") == "мио":
                 запись = "мио " + запись
             a = ws.cell(r, c, запись)
@@ -191,6 +216,14 @@ def build():
                 peak[m]["всего"] = total
             elif ytot and total > ytot:
                 b.fill = GREEN
+
+        # Комментарий пишется к упражнению, а колонка в книге одна на
+        # день: собираем непустые по порядку движений.
+        notes = [moves[m]["комментарий"] for m in MOVES
+                 if m in moves and moves[m].get("комментарий")]
+        if notes:
+            note = ws.cell(r, note_col, "; ".join(notes))
+            note.alignment = Alignment(horizontal="left", vertical="center")
 
         if r % 2:
             for c in range(1, col):
