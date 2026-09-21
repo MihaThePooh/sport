@@ -390,18 +390,23 @@ h1 {
 .go.ok { background: var(--gold); color: #3a3126; }
 
 /* Поле комментария разворачивается под кнопками. Открыто — значит
-   человек уже в него метит, поэтому сразу с фокусом. */
-.note {
+   человек уже в него метит, поэтому сразу с фокусом.
+
+   Селекторы намеренно прибиты к карточке. Без «.move» правило
+   ловило и ячейку комментария в таблице: та получала display: flex,
+   выпадала из табличной раскладки и висела на 10 px ниже своей
+   строки, не растягиваясь на её высоту. */
+.move .note {
   margin-top: 10px; display: flex; gap: 8px;
 }
-.note textarea {
+.move .note textarea {
   flex: 1 1 auto; min-width: 0; height: 66px; resize: none;
   font: inherit; font-size: 15px; padding: 8px 10px;
   border: 1.5px solid var(--accent); border-radius: 9px;
   background: #fff; color: var(--fg);
 }
-.note textarea:focus { outline: none; }
-.note button {
+.move .note textarea:focus { outline: none; }
+.move .note button {
   flex: 0 0 auto; width: 64px; height: 66px; border-radius: 9px;
   border: 0; background: var(--accent); color: #fff;
   font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
@@ -444,7 +449,7 @@ h1 {
 /* Комментарий — единственная колонка с текстом, и переносить его по
    слогам в 140 px нельзя: строки становились втрое выше соседних.
    Даём ширину под фразу целиком и переносим только по словам. */
-.log td.note {
+.log td.cmt {
   text-align: left; white-space: normal; word-break: normal;
   min-width: 260px; max-width: 420px; line-height: 1.35;
 }
@@ -1515,7 +1520,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
           : ''));
         tr.appendChild(el('td', 'sum', got ? String(got['сумма']) : ''));
       });
-      tr.appendChild(el('td', 'note', d['комментарий'] || ''));
+      tr.appendChild(el('td', 'cmt', d['комментарий'] || ''));
       tr.onclick = function () { изДня(d); };
       body.appendChild(tr);
     });
