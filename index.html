@@ -441,8 +441,11 @@ h1 {
   background: var(--card); text-align: left;
 }
 .log thead th.d { background: var(--accent); z-index: 2; }
+/* Полосы через строку. Фон нужен КАЖДОЙ ячейке: без него прозрачные
+   ячейки показывают фон страницы, и чередование было видно только на
+   колонке даты — ей фон задан ради sticky. */
+.log tbody td { background: var(--card); }
 .log tbody tr:nth-child(even) td { background: #f7f6f4; }
-.log tbody tr:nth-child(even) td.d { background: #f7f6f4; }
 .log tbody tr { cursor: pointer; }
 .log tbody tr:hover td { background: #eef3ef; }
 .log td.sum { font-weight: 600; }
