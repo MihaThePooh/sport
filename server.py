@@ -90,6 +90,10 @@ MAX_SERIES = 6       # больше серий за занятие — уже н
 NORMAL = ""
 MYO = "мио"
 KINDS = (NORMAL, MYO)
+# Чем мио-серия подписывает себя в комментарии. Отдельно от MYO: в
+# колонке «формат» лежит короткий признак для машины, а это — текст,
+# который Михаил читает в книге через полгода.
+MYO_NOTE = "мио-серии"
 MIN_MYO_SETS = 2     # активационный подход плюс хотя бы один круг
 
 # openpyxl стоит только под 3.12; если его нет — выгрузка честно откажет,
@@ -279,6 +283,37 @@ def state(home):
                            "комментарий": note_of(last)} if last else None),
             "занятий": len(mine),
         }
+    out["дни"] = recent(rows)
+    return out
+
+
+TABLE_DAYS = 15
+
+
+def recent(rows, n=TABLE_DAYS):
+    """Последние дни тренировок в том же виде, что и в книге: строка —
+    день, в ней по каждому движению подходы и сумма, плюс общий
+    комментарий.
+
+    Форма показывает эту таблицу внизу страницы, и она же служит списком
+    для правки — поэтому отдаётся вместе с состоянием, одним запросом.
+    Иначе после каждой записи пришлось бы ходить на сервер дважды."""
+    days = {}
+    for r in rows:
+        when, move = r.get("дата"), r.get("упражнение")
+        if not when or move not in MOVES:
+            continue
+        days.setdefault(when, {})[move] = {
+            "серии": series_of(r), "сумма": total_of(r),
+            "формат": kind_of(r), "комментарий": note_of(r)}
+    out = []
+    for when in sorted(days)[-n:]:
+        # Комментарии дня собираются в одну строку с именем движения
+        # впереди — ровно так, как они лежат в колонке книги.
+        notes = [f"{m}: {days[when][m]['комментарий']}" for m in MOVES
+                 if m in days[when] and days[when][m]["комментарий"]]
+        out.append({"дата": when, "движения": days[when],
+                    "комментарий": (" %s " % SERIES_SEP).join(notes)})
     return out
 
 
@@ -294,13 +329,19 @@ def as_series(sets):
     return [list(sets)]
 
 
-def add(home, move, sets, when, kind=NORMAL, note=""):
+def add(home, move, sets, when, kind=NORMAL, note="", append=False):
     """Добавить занятие. Запись за тот же день и то же движение заменяется:
     правишь опечатку — не плодишь дубль.
 
     sets — либо подходы одной серии, либо список серий. Две мио-серии
     подтягиваний за день — это одно занятие с двумя сериями, а не две
     записи: иначе вторая затирала бы первую по ключу.
+
+    append — дописать серию к тому, что за этот день уже есть. Так
+    работают обе кнопки записи в форме: человек делает серию, жмёт
+    «записать», поля чистятся, и следующая серия ложится рядом, а не
+    вместо. Без этого флага запись дня заменяется целиком — это режим
+    правки, когда нужно исправить неверно введённое.
 
     kind — формат занятия: обычная тренировка или мио-серия. На хранение
     он не влияет (числа те же), но влияет на то, как запись читают: в
@@ -334,11 +375,33 @@ def add(home, move, sets, when, kind=NORMAL, note=""):
         if kind == MYO and len(one) < MIN_MYO_SETS:
             raise ValueError("в мио-серии нужен активационный подход и хотя бы один круг")
 
-    # Перевод строки в комментарии сломал бы CSV на чтении, а точка с
-    # запятой — склейку комментариев дня в книге.
-    note = re.sub(r"[\r\n;]+", " ", str(note or "")).strip()[:MAX_NOTE]
+    # Перевод строки в комментарии сломал бы CSV на чтении, а обратный
+    # слеш — разбор серий и склейку комментариев дня в книге.
+    note = re.sub(r"[\r\n\\]+", " ", str(note or "")).strip()[:MAX_NOTE]
 
-    rows = [r for r in read(home)
+    rows = read(home)
+    было = next((r for r in rows
+                 if r["дата"] == when and r["упражнение"] == move), None)
+    if append and было:
+        # Серии дня складываются: сделал ещё один заход — он встаёт
+        # рядом с прежними, а не вместо них.
+        series = series_of(было) + series
+        if len(series) > MAX_SERIES:
+            raise ValueError("серий за день должно быть не больше %d" % MAX_SERIES)
+        # Комментарий пустым не перетираем: кнопка записи его не
+        # передаёт, и молчание не должно стирать уже написанное.
+        note = note or note_of(было)
+        # Пометка «мио» единожды поставлена — она про весь день.
+        kind = MYO if MYO in (kind, kind_of(было)) else kind
+
+    # Мио-серия помечает себя сама, одним словом в комментарии: отдельной
+    # колонки для этого в книге нет, а через полгода «9 + 3 + 3» без
+    # пометки не отличить от неудачной обычной тренировки. Пишем только
+    # в пустой комментарий — свой текст затирать нельзя.
+    if kind == MYO and not note:
+        note = MYO_NOTE
+
+    rows = [r for r in rows
             if not (r["дата"] == when and r["упражнение"] == move)]
     rows.append({"дата": when, "упражнение": move,
                  "подходы": (" %s " % SERIES_SEP).join(
@@ -347,6 +410,27 @@ def add(home, move, sets, when, kind=NORMAL, note=""):
                  "формат": kind, "комментарий": note})
     rows.sort(key=lambda r: (r["дата"], MOVES.index(r["упражнение"])
                              if r["упражнение"] in MOVES else 99))
+    write(home, rows)
+
+
+def note_set(home, move, when, note):
+    """Переписать комментарий занятия, не трогая подходы.
+
+    Отдельная операция, потому что кнопка «комментарий» открывает поле
+    с тем, что уже написано, и сохраняет отредактированный текст целиком.
+    Гонять через add() пришлось бы вместе с подходами — лишний повод
+    их испортить."""
+    if move not in MOVES:
+        raise ValueError("неизвестное упражнение")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", when or ""):
+        raise ValueError("дата не в формате ГГГГ-ММ-ДД")
+    rows = read(home)
+    цель = next((r for r in rows
+                 if r["дата"] == when and r["упражнение"] == move), None)
+    if цель is None:
+        raise LookupError("нет такого занятия")
+    цель["комментарий"] = re.sub(r"[\r\n\\]+", " ",
+                                 str(note or "")).strip()[:MAX_NOTE]
     write(home, rows)
 
 
@@ -523,7 +607,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(blob)
 
     def do_POST(self):
-        if self.path not in ("/api/add", "/api/del"):
+        if self.path not in ("/api/add", "/api/del", "/api/note"):
             return self.deny(404, "нет такого метода")
         home = self.home()
         if home is None:
@@ -537,11 +621,16 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/api/del":
                 drop(home, body.get("упражнение"),
                      body.get("дата") or "")
+            elif self.path == "/api/note":
+                note_set(home, body.get("упражнение"),
+                         body.get("дата") or date.today().isoformat(),
+                         body.get("комментарий") or "")
             else:
                 add(home, body.get("упражнение"), body.get("подходы") or [],
                     body.get("дата") or date.today().isoformat(),
                     body.get("формат") or NORMAL,
-                    body.get("комментарий") or "")
+                    body.get("комментарий") or "",
+                    bool(body.get("дописать")))
         except LookupError as e:
             return self.send(404, {"ошибка": str(e)})
         except ValueError as e:

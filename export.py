@@ -218,11 +218,17 @@ def build():
                 b.fill = GREEN
 
         # Комментарий пишется к упражнению, а колонка в книге одна на
-        # день: собираем непустые по порядку движений.
-        notes = [moves[m]["комментарий"] for m in MOVES
+        # день. Поэтому перед текстом ставится движение, а между ними —
+        # тот же знак, что делит серии:
+        #
+        #   подтягивания: мио \ отжимания: плечо ныло
+        #
+        # Так за год видно, к чему относилась пометка, и ни один
+        # комментарий не затирает соседний.
+        notes = ["%s: %s" % (m, moves[m]["комментарий"]) for m in MOVES
                  if m in moves and moves[m].get("комментарий")]
         if notes:
-            note = ws.cell(r, note_col, "; ".join(notes))
+            note = ws.cell(r, note_col, (" %s " % SERIES_SEP).join(notes))
             note.alignment = Alignment(horizontal="left", vertical="center")
 
         if r % 2:
