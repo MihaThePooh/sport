@@ -65,6 +65,42 @@ def load():
     return dict(sorted(days.items()))
 
 
+def shown(cell):
+    """Сколько знаков видно в ячейке. Дата хранится числом, а на экране
+    это ДД.ММ.ГГГГ — по str() получилось бы «2026-09-13 00:00:00»
+    и колонка вышла бы вдвое шире нужного."""
+    v = cell.value
+    if v is None:
+        return 0
+    if isinstance(v, date):
+        return len("ДД.ММ.ГГГГ")
+    return max(len(line) for line in str(v).split("\n"))
+
+
+def autofit(ws, last_col, pad=2.0, bold_pad=0.9):
+    """Ширина колонки по самому длинному содержимому — то же, что даёт
+    двойной клик по границе заголовка в Excel.
+
+    Объединённые ячейки пропускаем: название упражнения растянуто на две
+    колонки, и если считать его длину, «всего» раздуется без нужды.
+    Excel при автоподборе ведёт себя так же.
+
+    Жирный шрифт шире обычного при той же длине строки, поэтому такой
+    ячейке добавляется запас — иначе сумма упирается в рамку."""
+    merged = {c for rng in ws.merged_cells.ranges for c in rng.cells}
+    for i in range(1, last_col + 1):
+        width = 0
+        for row in range(1, ws.max_row + 1):
+            if (row, i) in merged:
+                continue
+            cell = ws.cell(row, i)
+            need = shown(cell)
+            if need and cell.font and cell.font.bold:
+                need += bold_pad
+            width = max(width, need)
+        ws.column_dimensions[get_column_letter(i)].width = width + pad
+
+
 def build():
     days = load()
     wb = Workbook()
@@ -165,23 +201,12 @@ def build():
             ws.cell(r, c).border = BOX
         r += 1
 
-    # Итоговая строка: сколько всего сделано за всё время.
-    ws.cell(r, 1, "итого").font = Font(bold=True)
-    for m in MOVES:
-        c = where[m]
-        s = sum(v[m]["всего"] for v in days.values() if m in v)
-        n = sum(1 for v in days.values() if m in v)
-        ws.cell(r, c, "%d занятий" % n).alignment = Alignment(horizontal="center")
-        cell = ws.cell(r, c + 1, s)
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal="center")
-    for c in range(1, col):
-        ws.cell(r, c).border = BOX
+    # Итоговой строки в книге нет намеренно: дневник заканчивается
+    # последним занятием. Суммы за всё время ничего не говорят о том,
+    # как идут дела сейчас, а лишняя строка мешает — при прокрутке
+    # вниз глаз ждёт свежую дату, а натыкается на «итого».
 
-    ws.column_dimensions["A"].width = 13
-    for m in MOVES:
-        ws.column_dimensions[get_column_letter(where[m])].width = 16
-        ws.column_dimensions[get_column_letter(where[m] + 1)].width = 8
+    autofit(ws, col - 1)
     ws.freeze_panes = "B3"          # шапка и дата не уезжают при прокрутке
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
