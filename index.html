@@ -327,10 +327,7 @@ h1 {
    как оборванная строка. */
 .tally { font-size: 17px; font-weight: 600; color: var(--fg); }
 .tally:empty { display: none; }
-/* Уже записанные за сегодня серии — мельче и серым: это факт, а не
-   то, что человек сейчас набирает. */
-.done { margin-left: auto; font-size: 13px; color: var(--muted);
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 
 .sets { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 /* Поле на подход, а не одна строка «9 7 5»: на телефоне так вылезает
@@ -444,7 +441,13 @@ h1 {
 .log tbody tr { cursor: pointer; }
 .log tbody tr:hover td { background: #eef3ef; }
 .log td.sum { font-weight: 600; }
-.log td.note { text-align: left; white-space: normal; min-width: 140px; }
+/* Комментарий — единственная колонка с текстом, и переносить его по
+   слогам в 140 px нельзя: строки становились втрое выше соседних.
+   Даём ширину под фразу целиком и переносим только по словам. */
+.log td.note {
+  text-align: left; white-space: normal; word-break: normal;
+  min-width: 260px; max-width: 420px; line-height: 1.35;
+}
 
 /* Рекорды уехали в меню: в форме они занимали строку под каждой
    карточкой, а смотрят на них раз в неделю. */
@@ -670,7 +673,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       say('удалено: ' + r['упражнение'] + ' за ' + ддмм(r['дата']));
       // Правили именно её — режим правки уже не о чем.
       if (правка && правка['дата'] === r['дата'] &&
-          правка['упражнение'] === r['упражнение']) { бросить(); }
+          правка['движения'][r['упражнение']]) { бросить(); }
       return refresh();
     }).catch(function (e) {
       say('не удалил: ' + e.message, 'bad');
@@ -715,8 +718,8 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   }
 
   function править(r) {
-    var card = cardOf(r['упражнение']);
-    if (!card) { say('это упражнение больше не ведётся', 'bad'); return; }
+    var мои = Object.keys(r['движения']);
+    if (!мои.length) { return; }
 
     // Дата: ставим барабаны и сразу считаем подтверждённой — человек её
     // не выбирал заново, он открыл существующую запись.
@@ -729,30 +732,36 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     try { localStorage.setItem(KEY, fixed); } catch (e) { /* приватный режим */ }
     relight();
 
-    // Подходы: сколько было, столько ячеек и покажем.
-    var было = String(r['подходы'] || '').trim().split(/\s+/)
-      .filter(function (x) { return x; });
-    var sets = card.querySelector('.sets');
-    var more = sets.querySelector('.more');
-    [].forEach.call(sets.querySelectorAll('input'), function (i) { i.remove(); });
-    for (var i = 0; i < Math.max(было.length, START); i++) {
-      var f = field(card);
-      f.value = было[i] || '';
-      sets.insertBefore(f, more);
-    }
-
     правка = r;
     editBar.querySelector('.txt').innerHTML =
-      '<b>Правка записи</b>' + r['упражнение'] + ' за ' + ддмм(r['дата']);
+      '<b>Правка тренировки</b>' + мои.join(', ') + ' за ' + ддмм(r['дата']);
     editBar.hidden = false;
+
     eachCard(function (c) {
-      var своя = c === card;
-      c.classList.toggle('правится', своя);
-      c.classList.toggle('чужая', !своя);
+      var было = r['движения'][c.dataset.move];
+      // Движения, которых в этот день не было, гасим: записать их можно
+      // и так, но править нечего.
+      c.classList.toggle('правится', !!было);
+      c.classList.toggle('чужая', !было);
+      if (было) { заполнить(c, было); }
       check(c);
     });
     closeMenu();
-    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    var первая = cardOf(мои[0]);
+    if (первая) { первая.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  }
+
+  /* Подставить подходы в карточку: сколько было, столько ячеек и
+     покажем, но не меньше трёх. */
+  function заполнить(card, числа) {
+    var sets = card.querySelector('.sets');
+    var more = sets.querySelector('.more');
+    [].forEach.call(sets.querySelectorAll('input'), function (i) { i.remove(); });
+    for (var i = 0; i < Math.max(числа.length, START); i++) {
+      var f = field(card);
+      f.value = числа[i] === undefined ? '' : String(числа[i]);
+      sets.insertBefore(f, more);
+    }
   }
 
   function бросить() {
@@ -1101,7 +1110,8 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       editBar.querySelector('.txt').innerHTML = ушла
         ? '<b>Дата изменена</b>запись ляжет на ' + ддмм(now) +
           ', а за ' + ддмм(правка['дата']) + ' останется прежняя'
-        : '<b>Правка записи</b>' + правка['упражнение'] +
+        : '<b>Правка тренировки</b>' +
+          Object.keys(правка['движения']).join(', ') +
           ' за ' + ддмм(правка['дата']);
     }
     // Кнопки записи зависят от подтверждения — обновляем вместе,
@@ -1204,7 +1214,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     ser.disabled = !v.length || stale || v.length < 2;
     go.disabled = !v.length || stale;
 
-    var чиню = !!(правка && правка['упражнение'] === card.dataset.move);
+    var чиню = !!(правка && правка['движения'][card.dataset.move]);
     go.textContent = stale ? 'подтвердите дату'
       : (чиню ? 'сохранить правку' : 'записать тренировку');
   }
@@ -1216,7 +1226,6 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     var top = el('div', 'top');
     top.appendChild(el('h2', null, move + ' :'));
     top.appendChild(el('span', 'tally'));
-    top.appendChild(el('span', 'done'));
     c.appendChild(top);
 
     var sets = el('div', 'sets');
@@ -1334,17 +1343,10 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   function paint(data) {
     дни = data['дни'] || [];
     MOVES.forEach(function (move) {
-      // Что уже записано за выбранный день — справа в заголовке. Без
-      // этого после очистки полей не видно, сколько серий ушло.
       var c = cardOf(move);
       if (!c) { return; }
       var день = дни.filter(function (d) { return d['дата'] === fixed; })[0];
       var мой = день && день['движения'][move];
-      c.querySelector('.done').textContent = мой
-        ? 'записано ' + мой['серии'].map(function (s) {
-            return s.join('+');
-          }).join(' ' + SEP + ' ')
-        : '';
       // Кнопка комментария подсвечена, если за этот день уже есть текст.
       c.querySelector('.note-btn').classList.toggle('has',
         !!(мой && мой['комментарий']));
@@ -1382,7 +1384,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     var v = values(c);
     if (!v.length) { return; }
     var was = state[move] || { 'подход': 0, 'занятие': 0 };   // рекорд года ДО записи
-    var чиню = !!(правка && правка['упражнение'] === move);
+    var чиню = !!(правка && правка['движения'][move]);
     var btn = c.querySelector(kind === MYO ? '.go.ser' : '.go:not(.ser)');
     [].forEach.call(c.querySelectorAll('.go'), function (b) { b.disabled = true; });
     stat('сохранение…');
@@ -1415,8 +1417,14 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       // Правку закрываем сами: иначе жёлтая полоса висит над формой,
       // и следующая тренировка пишется «в режиме правки».
       if (чиню) {
-        say('запись за ' + ддмм(fixed) + ' обновлена');
-        бросить();
+        say(move + ' за ' + ддмм(fixed) + ' обновлено');
+        delete правка['движения'][move];
+        c.classList.remove('правится');
+        c.classList.add('чужая');
+        сбросить(c);
+        // Поправили всё, что было в этом дне — полоса уходит сама.
+        if (!Object.keys(правка['движения']).length) { бросить(); return; }
+        relight();   // в полосе остаются только неисправленные движения
         return;
       }
       сбросить(c);
@@ -1519,22 +1527,25 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     return p[2] + '.' + p[1] + '.' + p[0];
   }
 
-  /* Тап по строке. В строке до трёх движений, и какое из них человек
-     хотел поправить — неизвестно. Берём первое записанное, остальные
-     он выберет тем же тапом ещё раз: строка подсказывает, что править
-     можно, а карточка — что именно правится. */
+  /* Тап по строке открывает на правку ВЕСЬ день. В строке до трёх
+     движений, и, метясь в отжимания, человек попадал бы в подтягивания:
+     раньше поднималось только первое записанное. Теперь заполняются все
+     карточки этого дня — править можно любую, кнопка записи у каждой
+     своя. */
   function изДня(d) {
-    var move = MOVES.filter(function (m) { return d['движения'][m]; })[0];
-    if (!move) { return; }
-    var got = d['движения'][move];
-    // Собираем подходы всех серий подряд: правка заменяет день целиком,
-    // и разделение на серии при исправлении опечатки только мешает.
-    var плоско = [];
-    got['серии'].forEach(function (s) {
-      s.forEach(function (x) { плоско.push(x); });
+    var день = { 'дата': d['дата'], 'движения': {} };
+    MOVES.forEach(function (m) {
+      var got = d['движения'][m];
+      if (!got) { return; }
+      // Серии при правке сливаем в один ряд: деление на заходы мешает,
+      // когда исправляешь опечатку в одном числе.
+      var плоско = [];
+      got['серии'].forEach(function (s) {
+        s.forEach(function (x) { плоско.push(x); });
+      });
+      день['движения'][m] = плоско;
     });
-    править({ 'дата': d['дата'], 'упражнение': move,
-              'подходы': плоско.join(' '), 'формат': got['формат'] });
+    править(день);
   }
 
   // Помним последнюю подтверждённую дату, чтобы после перезагрузки
