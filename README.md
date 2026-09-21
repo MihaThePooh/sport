@@ -134,7 +134,7 @@ node ~/tools/uitest/sportui.js
   правка — 30 проверок
 ```
 
-Рядом лежат и остальные прогоны: `sport.js`, `sportdate.js`,
+Рядом лежат и остальные прогоны: `sport.js`, `sportдата.js`,
 `sportsets.js`, `sportmove.js`, `sportkey.js`, `sporthead.js`.
 
 Обе пишут во временные папки — боевой дневник не трогают.

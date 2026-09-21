@@ -436,28 +436,17 @@ h1 {
   background: var(--card); text-align: left;
 }
 .log thead th.d { background: var(--accent); z-index: 2; }
-/* Через строку — полоса светлее. Считать через nth-child нельзя:
-   под днём с комментарием идёт вторая строка, и чередование сбилось бы. */
-.log tbody tr.alt td { background: #f7f6f4; }
+.log tbody tr:nth-child(even) td { background: #f7f6f4; }
+.log tbody tr:nth-child(even) td.d { background: #f7f6f4; }
 .log tbody tr { cursor: pointer; }
 .log tbody tr:hover td { background: #eef3ef; }
 .log td.sum { font-weight: 600; }
-/* Комментарий отдельной строкой под днём, а не колонкой справа.
-
-   Колонкой он не работал: на телефоне таблица и без него шире экрана,
-   так что текст оказывался за краем — к нему надо было листать вбок,
-   и там же висело пустое поле в пол-экрана против дней без текста.
-   Строкой он читается сразу, а sticky держит его у левого края, пока
-   таблицу листают вбок. */
-.log tr.noterow td {
-  padding: 0; text-align: left; white-space: normal;
-  border-top: 0; background: inherit;
-}
-.log tr.noterow span {
-  position: sticky; left: 0;
-  display: block; width: max-content; max-width: 84vw;
-  padding: 1px 7px 5px; box-sizing: border-box;
-  color: var(--muted); font-size: 12px; line-height: 1.35; word-break: normal;
+/* Комментарий — единственная колонка с текстом, и переносить его по
+   слогам в 140 px нельзя: строки становились втрое выше соседних.
+   Даём ширину под фразу целиком и переносим только по словам. */
+.log td.note {
+  text-align: left; white-space: normal; word-break: normal;
+  min-width: 260px; max-width: 420px; line-height: 1.35;
 }
 
 /* Рекорды уехали в меню: в форме они занимали строку под каждой
@@ -1500,6 +1489,9 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       c.colSpan = 2;
       r1.appendChild(c);
     });
+    var note = el('th', null, 'комментарий');
+    note.rowSpan = 2;
+    r1.appendChild(note);
     head.appendChild(r1);
 
     var r2 = el('tr');
@@ -1512,8 +1504,8 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
 
     var body = el('tbody');
     // Свежие сверху: внизу страницы взгляд падает на первую строку.
-    дни.slice().reverse().forEach(function (d, i) {
-      var tr = el('tr', i % 2 ? 'alt' : null);
+    дни.slice().reverse().forEach(function (d) {
+      var tr = el('tr');
       tr.appendChild(el('td', 'd', ддммгг(d['дата'])));
       MOVES.forEach(function (m) {
         var got = d['движения'][m];
@@ -1523,20 +1515,9 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
           : ''));
         tr.appendChild(el('td', 'sum', got ? String(got['сумма']) : ''));
       });
+      tr.appendChild(el('td', 'note', d['комментарий'] || ''));
       tr.onclick = function () { изДня(d); };
       body.appendChild(tr);
-
-      // Комментарий — своей строкой и только когда он есть: пустая
-      // строка под каждым днём удваивала бы таблицу ни за чем.
-      if (d['комментарий']) {
-        var nr = el('tr', 'noterow' + (i % 2 ? ' alt' : ''));
-        var td = el('td');
-        td.colSpan = 1 + MOVES.length * 2;
-        td.appendChild(el('span', null, d['комментарий']));
-        nr.appendChild(td);
-        nr.onclick = function () { изДня(d); };
-        body.appendChild(nr);
-      }
     });
     logTable.appendChild(body);
   }
