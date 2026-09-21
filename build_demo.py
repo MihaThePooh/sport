@@ -16,7 +16,7 @@ from pathlib import Path
 import server                      # переиспользуем чтение и разбор CSV
 
 BASE = Path(__file__).resolve().parent
-OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else BASE / "тренировки-демо.html"
+OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else BASE / "demo.html"
 
 # Заглушка сети. Логика повторяет server.py: те же рекорды, то же
 # правило «запись за тот же день и движение заменяет прежнюю».
