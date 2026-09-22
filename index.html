@@ -330,10 +330,20 @@ h1 {
   margin: 0 16px;
   transition: max-height .26s ease, opacity .2s ease, margin-top .26s ease;
 }
-#timer.on { max-height: 96px; opacity: 1; margin-top: 8px; }
+/* Потолок с запасом на вторую строку: на узком экране кнопки
+   переносятся под табло, и прежних 96 px им уже не хватало — низ
+   ряда просто срезался. max-height только ограничивает, поэтому на
+   широком экране лишняя высота ничего не портит. */
+#timer.on { max-height: 140px; opacity: 1; margin-top: 8px; }
+/* С раскрытой настройкой панель выше: max-height анимируется,
+   поэтому её значение приходится задавать числом. */
+#timer.on.свой { max-height: 360px; }
+/* wrap обязателен: кнопок в ряду стало три, и на 360 px они впритык.
+   Без переноса ряд не «ломается» — он молча вылезает за скруглённую
+   рамку, панель получает горизонтальную прокрутку, и край уезжает. */
 #timer .row {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 10px;
+  flex-wrap: wrap; gap: 8px;
   background: var(--card);
   border: 1px solid var(--line); border-radius: 12px;
   padding: 8px 10px;
@@ -351,15 +361,60 @@ h1 {
 .face.вышло { color: #fff; background: var(--accent); }
 /* Кнопки готовых интервалов — к правому краю, как просил Михаил:
    палец идёт к ним от кнопки даты, которая стоит там же. */
-.tacts { display: flex; gap: 8px; flex: 0 0 auto; }
+.tacts { display: flex; gap: 6px; flex: 1 1 auto; justify-content: flex-end; }
 .tacts button {
-  min-width: 62px; height: 44px; padding: 0 10px;
+  min-width: 56px; height: 44px; padding: 0 7px;
   border: 0; border-radius: 11px;
   background: var(--accent); color: #fff;
   font: inherit; font-size: 15px; font-weight: 600;
   cursor: pointer;
 }
 .tacts button:active { background: #27593f; }
+/* Кнопка своего интервала — слева от готовых, рамкой, а не заливкой:
+   она не запускает отсчёт, а открывает настройку. */
+.tacts .own {
+  min-width: 44px; padding: 0 8px;
+  background: none; color: var(--accent);
+  border: 1.5px solid var(--line);
+}
+.tacts .own:active { background: #eef3ef; }
+.tacts .own.on { border-color: var(--accent); background: #eef3ef; }
+.tacts .own svg { width: 19px; height: 19px; display: block; margin: 0 auto; }
+
+/* Настройка своего интервала. Кнопками, а не полем ввода: между
+   подходами руки дрожат, телефон лежит на полу, и цифровая
+   клавиатура тут проигрывает крупным кнопкам вчистую. */
+#tset[hidden] { display: none; }
+#tset {
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+#tset .line {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px;
+}
+#tset .line b {
+  flex: 0 0 34px;
+  font-size: 13px; font-weight: 400; color: var(--muted);
+}
+#tset .line .val {
+  flex: 1 1 auto; text-align: center;
+  font-size: 22px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+#tset .line button {
+  width: 44px; height: 40px; flex: 0 0 auto;
+  border: 1.5px solid var(--line); border-radius: 10px;
+  background: var(--card); color: var(--fg);
+  font: inherit; font-size: 21px; line-height: 1; cursor: pointer;
+}
+#tset .line button:active { background: #f2efea; }
+#tset .go {
+  width: 100%; height: 44px;
+  border: 0; border-radius: 11px;
+  background: var(--accent); color: #fff;
+  font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+}
 
 /* Все три движения на одной странице, друг под другом.
 
@@ -426,15 +481,19 @@ h1 {
 .sets input::-webkit-outer-spin-button,
 .sets input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .sets input:focus { outline: none; border-color: var(--accent); background: #fff; }
-/* Ряд полей и кнопка «+» — одной строкой. «+» стоит сразу за
-   последним полем: между подходами руки дрожат, и тянуться к краю
-   экрана ради одного нажатия неудобно. */
-.sets .more {
+/* Место под следующий подход. Не кнопка и не поле: нажимать её не
+   надо, она только показывает, что ряд продолжится. Кнопка «+» тут
+   была лишним жестом — ввёл число, и место под следующее появляется
+   само. */
+.sets .ghost {
   width: 48px; height: 44px; flex: 0 0 auto;
-  border: 1.5px solid var(--accent); border-radius: 9px;
-  background: none; color: var(--accent);
-  font: inherit; font-size: 21px; line-height: 1; cursor: pointer;
+  border: 1.5px dashed #d8d2ca; border-radius: 9px;
+  background: none;
+  /* Насквозь для пальца: случайный тап по ней не должен ни
+     фокусироваться, ни сворачивать клавиатуру. */
+  pointer-events: none;
 }
+.sets .ghost[hidden] { display: none; }
 
 /* Три кнопки в ряд, равной ширины. Порядок не случайный: слева
    «комментарий» — его жмут редко и не в спешке, справа «тренировка» —
@@ -607,9 +666,32 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     <div class="face" id="tface" role="timer"
          title="тап — сбросить">00:00:00</div>
     <div class="tacts">
+      <button type="button" class="own" id="townbtn"
+              aria-label="свой интервал" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h10M18 7h2M4 17h4M12 17h8"/>
+          <circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>
+        </svg>
+      </button>
       <button type="button" data-sec="20">20 сек</button>
       <button type="button" data-sec="180">3 мин</button>
     </div>
+  </div>
+  <div id="tset" hidden>
+    <div class="line">
+      <b>мин</b>
+      <button type="button" data-step="-60">−</button>
+      <span class="val" id="tmin">2</span>
+      <button type="button" data-step="60">+</button>
+    </div>
+    <div class="line">
+      <b>сек</b>
+      <button type="button" data-step="-5">−</button>
+      <span class="val" id="tsec">30</span>
+      <button type="button" data-step="5">+</button>
+    </div>
+    <button type="button" class="go" id="tsetgo">Запустить 2:30</button>
   </div>
 </div>
 
@@ -635,7 +717,6 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   'use strict';
 
   var MOVES = ['подтягивания', 'отжимания', 'приседания'];
-  var START = 3;      // столько полей показываем сразу: обычный формат — три подхода
   var MAX_SETS = 12;  // столько же стоит в server.py — там же и отказ, если обойти
 
   /* Форматы занятия. Пустая строка — обычная тренировка: так же она
@@ -924,17 +1005,18 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     card.активная = 0;
   }
 
-  /* Подставить подходы в карточку: сколько было, столько ячеек и
-     покажем, но не меньше трёх. */
+  /* Подставить подходы в карточку: ровно столько ячеек, сколько было
+     подходов. Пустое место под следующий добавит подогнать(). */
   function заполнить(card, числа) {
     var sets = card.querySelector('.sets');
-    var more = sets.querySelector('.more');
+    var g = sets.querySelector('.ghost');
     [].forEach.call(sets.querySelectorAll('input'), function (i) { i.remove(); });
-    for (var i = 0; i < Math.max(числа.length, START); i++) {
+    for (var i = 0; i < числа.length; i++) {
       var f = field(card);
-      f.value = числа[i] === undefined ? '' : String(числа[i]);
-      sets.insertBefore(f, more);
+      f.value = String(числа[i]);
+      sets.insertBefore(f, g || null);
     }
+    подогнать(card);
   }
 
   function бросить() {
@@ -1442,10 +1524,73 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     // видеть карточки, а не чтобы бросить отдых.
   };
 
+  /* Клавиатура не должна сворачиваться от тапа по таймеру.
+
+     Раньше выходило так: вбил «9», нажал enter, тянешься к «3 мин» —
+     и первый тап только УБИРАЕТ клавиатуру, потому что браузер снимает
+     фокус с поля. Приходилось жать дважды, стоя над турником.
+
+     preventDefault на pointerdown отменяет именно смену фокуса, а сам
+     клик оставляет: поле остаётся активным, клавиатура на месте,
+     таймер стартует с первого касания. */
+  function держатьФокус(узел) {
+    узел.addEventListener('pointerdown', function (e) { e.preventDefault(); });
+  }
+
+  держатьФокус(tPanel);
+  держатьФокус(tBtn);
+  держатьФокус(tFace);
+
   tPanel.querySelector('.tacts').onclick = function (e) {
     var b = e.target.closest('button');
-    if (b) { пуск(Number(b.dataset.sec)); }
+    if (!b) { return; }
+    if (b.id === 'townbtn') { свойИнтервал(); return; }
+    пуск(Number(b.dataset.sec));
   };
+
+  /* --- свой интервал ---
+     Кнопками, а не полем ввода: между подходами руки дрожат, телефон
+     лежит на полу, и цифровая клавиатура тут проигрывает крупным
+     кнопкам вчистую. Заодно не воюем с фокусом.
+
+     Выбранное живёт до перезагрузки: те же три с половиной минуты
+     обычно нужны и на следующем подходе. */
+  var свои = 150;
+  var setBox = document.getElementById('tset');
+  var ownBtn = document.getElementById('townbtn');
+
+  function мсс(сек) {
+    return Math.floor(сек / 60) + ':' + ('0' + (сек % 60)).slice(-2);
+  }
+
+  function показатьСвои() {
+    document.getElementById('tmin').textContent = Math.floor(свои / 60);
+    document.getElementById('tsec').textContent = ('0' + (свои % 60)).slice(-2);
+    document.getElementById('tsetgo').textContent = 'Запустить ' + мсс(свои);
+  }
+
+  function свойИнтервал() {
+    var открыт = setBox.hidden;
+    setBox.hidden = !открыт;
+    ownBtn.classList.toggle('on', открыт);
+    ownBtn.setAttribute('aria-expanded', открыт ? 'true' : 'false');
+    tPanel.classList.toggle('свой', открыт);
+    if (открыт) { показатьСвои(); }
+  }
+
+  setBox.onclick = function (e) {
+    var b = e.target.closest('button');
+    if (!b) { return; }
+    if (b.id === 'tsetgo') {
+      свойИнтервал();          // свернуть настройку
+      пуск(свои);
+      return;
+    }
+    // Ниже пяти секунд отсчёт бессмыслен, выше часа — опечатка.
+    свои = Math.max(5, Math.min(3600, свои + Number(b.dataset.step)));
+    показатьСвои();
+  };
+  показатьСвои();
 
   // Тап по табло — сброс. Единственный способ остановить отсчёт,
   // если нажал не ту кнопку.
@@ -1518,6 +1663,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     i.setAttribute('aria-label', 'повторений в подходе');
     i.addEventListener('input', function () {
       i.value = i.value.replace(/\D/g, '');
+      подогнать(card);
       check(card);
     });
     i.addEventListener('keydown', function (e) {
@@ -1526,11 +1672,49 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     return i;
   }
 
+  /* Пустое место под следующий подход. Ни кнопка, ни поле: нажимать
+     её не надо, она только показывает, что ряд продолжится. */
+  function фантом() {
+    var g = el('div', 'ghost');
+    g.setAttribute('aria-hidden', 'true');
+    return g;
+  }
+
+  /* Ряд полей = заполненные плюс одно пустое. Ни кнопки «+», ни трёх
+     клеток авансом: вбил число — место под следующее появилось само.
+
+     Поле, в котором стоит курсор, не удаляем никогда, даже если оно
+     лишнее по счёту: иначе клавиатура схлопнется посреди ввода. */
+  function подогнать(card) {
+    var sets = card.querySelector('.sets');
+    var g = sets.querySelector('.ghost');
+    var поля = [].slice.call(sets.querySelectorAll('input'));
+
+    var последнее = -1;
+    поля.forEach(function (i, n) { if (i.value.trim()) { последнее = n; } });
+    var нужно = Math.max(1, Math.min(последнее + 2, MAX_SETS));
+
+    while (поля.length < нужно) {
+      var f = field(card);
+      sets.insertBefore(f, g || null);
+      поля.push(f);
+    }
+    while (поля.length > нужно) {
+      var хвост = поля[поля.length - 1];
+      if (хвост === document.activeElement) { break; }
+      хвост.remove();
+      поля.pop();
+    }
+    if (g) { g.hidden = поля.length >= MAX_SETS; }
+  }
+
+  /* Enter уводит в следующее поле — и НЕ снимает фокус, если поле
+     последнее. Раньше здесь стоял blur(), и клавиатура закрывалась
+     ровно в тот момент, когда собирался вводить дальше. */
   function next(input) {
     var all = [].slice.call(input.parentNode.querySelectorAll('input'));
     var i = all.indexOf(input);
     if (all[i + 1]) { all[i + 1].focus(); }
-    else { input.blur(); }
   }
 
   function values(card) {
@@ -1572,31 +1756,11 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     top.appendChild(el('span', 'tally'));
     c.appendChild(top);
 
+    /* Одно поле под первый подход и пустое место под следующий.
+       Три клетки авансом выглядели как требование заполнить их все. */
     var sets = el('div', 'sets');
-    for (var i = 0; i < START; i++) { sets.appendChild(field(c)); }
-
-    /* «+» — кнопка на один жест между подходами: вбил число, нажал,
-       поле под следующий подход уже ждёт с курсором внутри. Пустое
-       поле сначала переиспользуем: десять пустых клеток от десяти
-       нажатий — не то, что человек имел в виду. */
-    var more = el('button', 'more', '+');
-    more.type = 'button';
-    more.onclick = function () {
-      var all = [].slice.call(sets.querySelectorAll('input'));
-      var free = null;
-      for (var i = 0; i < all.length; i++) {
-        if (!all[i].value.trim()) { free = all[i]; break; }
-      }
-      if (!free) {
-        if (all.length >= MAX_SETS) {
-          say('больше ' + MAX_SETS + ' подходов не даст сервер'); return;
-        }
-        free = field(c);
-        sets.insertBefore(free, more);
-      }
-      free.focus();
-    };
-    sets.appendChild(more);
+    sets.appendChild(field(c));
+    sets.appendChild(фантом());
     c.appendChild(sets);
 
     var act = el('div', 'act');
@@ -1676,9 +1840,10 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       stat('сохранено');
       return refresh();
     }).catch(function (e) {
-      // Занятия за этот день ещё нет — комментарий не к чему привязать.
-      say(String(e.message || e).indexOf('нет такого') >= 0
-        ? 'сначала запиши подходы за этот день' : e.message, 'bad');
+      /* Отдельной подсказки про «сначала запиши подходы» больше нет:
+         сервер заводит занятие сам, если комментарий пришёл раньше
+         первой серии. Заметку по ходу тренировки пишут именно так. */
+      say(e.message, 'bad');
     });
   }
 
@@ -1799,17 +1964,13 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     });
   }
 
-  /* После записи поля чистые и их снова три — даже если было шесть.
+  /* После записи остаётся одно пустое поле — ровно как при открытии.
      Следующая серия начинается с того же места, что и первая. */
   function сбросить(c) {
     var sets = c.querySelector('.sets');
-    var поля = [].slice.call(sets.querySelectorAll('input'));
-    поля.forEach(function (i, n) {
-      if (n < START) { i.value = ''; } else { i.remove(); }
-    });
-    for (var n = поля.length; n < START; n++) {
-      sets.insertBefore(field(c), sets.querySelector('.more'));
-    }
+    [].forEach.call(sets.querySelectorAll('input'), function (i) { i.remove(); });
+    sets.insertBefore(field(c), sets.querySelector('.ghost') || null);
+    подогнать(c);
     c.querySelector('.tally').textContent = '';
   }
 
