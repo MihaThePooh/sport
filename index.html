@@ -270,9 +270,13 @@ h1 {
 .wheel li.on {
   color: var(--fg); font-weight: 600; font-size: 21px;
 }
-.wheel.day { width: 48px; }
-.wheel.mon { width: 58px; }
-.wheel.year { width: 66px; }
+.wheel.day { width: 44px; }
+.wheel.mon { width: 52px; }
+/* Год показан двумя цифрами с апострофом — ’26. Четыре цифры съедали
+   20 px, а место понадобилось кнопке таймера. Апостроф именно ’
+   (U+2019), а не обратная кавычка: типографски это сокращение года,
+   как в «’90-е». */
+.wheel.year { width: 46px; }
 
 /* Подтверждение даты. Тусклая — значит показанное уже записано.
    Размер в высоту равен прицелу на барабане: две части одного действия
@@ -280,17 +284,81 @@ h1 {
 /* Кнопка подтверждения даты. Словами, а не галочкой: барабаны
    крутятся сами от неосторожного движения, и человек должен видеть,
    что дату надо именно установить, а не просто выбрать. */
+/* Надпись в две строки. Одной строкой кнопка требовала 166 px, а после
+   появления таймера на неё осталось 128 — текст уезжал за правый край
+   экрана. Перенос сохраняет слова и высоту нажатия, теряя только
+   ширину, которой всё равно нет. */
 .fix {
-  flex: 0 0 auto; min-height: var(--aim); padding: 0 18px;
+  flex: 0 1 auto; min-height: var(--aim); padding: 5px 11px;
   border: 0; border-radius: 12px;
   background: var(--accent); color: #fff;
-  font: inherit; font-size: 16px; font-weight: 600;
+  font: inherit; font-size: 14.5px; font-weight: 600; line-height: 1.15;
+  white-space: normal; text-align: center;
   cursor: pointer;
   transition: background .15s ease, opacity .15s ease;
 }
 /* Установлена — кнопка гаснет до серо-зелёной: дело сделано, звать
    к себе ей больше незачем. */
-.fix.done { background: #8fb3a0; color: #fff; font-size: 15px; }
+.fix.done { background: #8fb3a0; color: #fff; font-size: 13.5px; }
+
+/* Кнопка таймера стоит между барабанами и «установить дату» — в месте,
+   освободившемся от четырёхзначного года. 44 px в обе стороны: это
+   минимум, в который палец попадает не глядя. */
+.tbtn {
+  flex: 0 0 auto;
+  width: 44px; height: 44px; margin: 0 2px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--line); border-radius: 12px;
+  background: var(--card); color: var(--muted);
+  cursor: pointer; padding: 0;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.tbtn svg { width: 23px; height: 23px; display: block; }
+/* Открыт — кнопка в цвете приложения: видно, что панель ниже её, а не
+   сама по себе. */
+.tbtn.on { border-color: var(--accent); color: var(--accent); background: #eef3ef; }
+/* Отсчёт идёт, а панель свернули — кнопка остаётся золотой, иначе о
+   работающем таймере узнаёшь только по писку. */
+.tbtn.идёт { border-color: var(--gold); color: var(--gold); background: #fdf7e8; }
+
+/* Панель таймера выезжает под блоком даты. max-height, а не hidden:
+   атрибут hidden выключает элемент целиком, и анимировать нечего. */
+#timer {
+  overflow: hidden;
+  max-height: 0; opacity: 0;
+  margin: 0 14px 0 8px;
+  transition: max-height .26s ease, opacity .2s ease, margin-top .26s ease;
+}
+#timer.on { max-height: 96px; opacity: 1; margin-top: 8px; }
+#timer .row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--line); border-radius: 12px;
+  padding: 8px 10px;
+}
+/* Табло. tabular-nums — цифры одной ширины, иначе шесть цифр дёргают
+   табло на каждой сотой, и смотреть на это невозможно. */
+.face {
+  font-size: 29px; font-weight: 600; letter-spacing: .5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg); cursor: pointer;
+  padding: 2px 4px; border-radius: 8px;
+  transition: color .15s ease, background .15s ease;
+}
+.face.идёт { color: var(--accent); }
+.face.вышло { color: #fff; background: var(--accent); }
+/* Кнопки готовых интервалов — к правому краю, как просил Михаил:
+   палец идёт к ним от кнопки даты, которая стоит там же. */
+.tacts { display: flex; gap: 8px; flex: 0 0 auto; }
+.tacts button {
+  min-width: 62px; height: 44px; padding: 0 10px;
+  border: 0; border-radius: 11px;
+  background: var(--accent); color: #fff;
+  font: inherit; font-size: 15px; font-weight: 600;
+  cursor: pointer;
+}
+.tacts button:active { background: #27593f; }
 
 /* Все три движения на одной странице, друг под другом.
 
@@ -503,8 +571,30 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
 
 <div class="pick">
   <div class="wheels" id="wheels"></div>
+  <button class="tbtn" id="tbtn" type="button"
+          aria-label="таймер отдыха" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      <circle cx="12" cy="13.5" r="7.5"></circle>
+      <path d="M12 10v3.5l2.5 2"></path>
+      <path d="M9.5 3h5"></path>
+      <path d="M18.5 6.5l1.5-1.5"></path>
+    </svg>
+  </button>
   <button class="fix" id="fix" type="button"
           aria-label="подтвердить дату">установить дату</button>
+</div>
+
+<!-- Таймер отдыха между подходами. Свёрнут, пока не нажали кнопку. -->
+<div id="timer">
+  <div class="row">
+    <div class="face" id="tface" role="timer"
+         title="тап — сбросить">00:00:00</div>
+    <div class="tacts">
+      <button type="button" data-sec="20">20 сек</button>
+      <button type="button" data-sec="180">3 мин</button>
+    </div>
+  </div>
 </div>
 
 <div id="edit" hidden>
@@ -1131,6 +1221,174 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     fixBtn.textContent = same ? 'дата установлена' : 'установить дату';
   }
 
+  /* --- таймер отдыха между подходами ---
+
+     Считаем не тиками, а от момента окончания: `конец = сейчас + N`,
+     а на экране каждый кадр показываем остаток. Это принципиально.
+     Складывать интервалы нельзя: браузер тормозит таймеры в фоне и
+     совсем замирает, когда экран гаснет, — сложенные тики отстали бы
+     на минуты. От абсолютного момента же отсчёт верен всегда: телефон
+     проснулся, кадр посчитался, цифра правильная.
+
+     Экран, чтобы не гас, держим Wake Lock — иначе на трёх минутах
+     Android уснёт и писк прозвучит только после разблокировки. */
+  var tPanel = document.getElementById('timer');
+  var tBtn = document.getElementById('tbtn');
+  var tFace = document.getElementById('tface');
+  var конец = 0;          // когда истекает, мс epoch; 0 — таймер стоит
+  var кадрId = null;
+  var будильник = null;   // страховка на случай, если кадры замрут
+  var замок = null;       // Wake Lock, держит экран включённым
+  var звукCtx = null;
+
+  function дв(n) { return (n < 10 ? '0' : '') + n; }
+
+  /* Минуты:секунды:сотые — шесть цифр, как на секундомере. */
+  function табло(мс) {
+    if (мс < 0) { мс = 0; }
+    var сотых = Math.round(мс / 10);
+    tFace.textContent = дв(Math.floor(сотых / 6000)) + ':' +
+                        дв(Math.floor(сотых / 100) % 60) + ':' +
+                        дв(сотых % 100);
+  }
+
+  /* Контекст звука создаётся только по нажатию: без жеста человека
+     браузер держит его «на паузе» и писк не прозвучит. */
+  function аудио() {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) { return null; }
+    if (!звукCtx) { звукCtx = new AC(); }
+    if (звукCtx.state === 'suspended') { звукCtx.resume(); }
+    return звукCtx;
+  }
+
+  function пикнуть() {
+    var ctx = аудио();
+    if (!ctx) { return; }
+    // Четыре коротких сигнала и тишина: таймер не должен пищать, пока
+    // его не выключат — Михаил в этот момент под штангой, а не у телефона.
+    for (var i = 0; i < 4; i++) {
+      try {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        var t = ctx.currentTime + i * 0.22;
+        o.type = 'square';
+        o.frequency.value = 880;
+        // Нарастание и спад по экспоненте — иначе на включении и
+        // выключении слышен щелчок громче самого сигнала.
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.3, t + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(t); o.stop(t + 0.15);
+      } catch (e) { return; }    // звук не вышел — остаётся вибрация
+    }
+  }
+
+  function дрожь() {
+    try {
+      if (navigator.vibrate) { navigator.vibrate([130, 90, 130, 90, 240]); }
+    } catch (e) { /* на десктопе вибрации нет — и ладно */ }
+  }
+
+  function держатьЭкран() {
+    if (!navigator.wakeLock || замок) { return; }
+    navigator.wakeLock.request('screen').then(function (l) {
+      замок = l;
+      // Система может забрать замок сама — например, когда экран
+      // погасили кнопкой. Тогда просто забываем про него.
+      l.addEventListener('release', function () { замок = null; });
+    }).catch(function () { замок = null; });
+  }
+
+  function отпуститьЭкран() {
+    if (!замок) { return; }
+    try { замок.release(); } catch (e) { /* уже отдан */ }
+    замок = null;
+  }
+
+  function кадр() {
+    var осталось = конец - Date.now();
+    табло(осталось);
+    if (осталось <= 0) { дозвон(); return; }
+    кадрId = requestAnimationFrame(кадр);
+  }
+
+  function стопКадры() {
+    if (кадрId) { cancelAnimationFrame(кадрId); кадрId = null; }
+    if (будильник) { clearTimeout(будильник); будильник = null; }
+  }
+
+  /* Время вышло: пискнуть, дрогнуть, обнулиться. */
+  function дозвон() {
+    стопКадры();
+    конец = 0;
+    табло(0);
+    tFace.classList.remove('идёт');
+    tBtn.classList.remove('идёт');
+    tFace.classList.add('вышло');
+    setTimeout(function () { tFace.classList.remove('вышло'); }, 2500);
+    пикнуть();
+    дрожь();
+    отпуститьЭкран();
+  }
+
+  function пуск(сек) {
+    аудио();              // разблокировать звук этим же нажатием
+    держатьЭкран();
+    стопКадры();
+    конец = Date.now() + сек * 1000;
+    tFace.classList.remove('вышло');
+    tFace.classList.add('идёт');
+    tBtn.classList.add('идёт');
+    кадрId = requestAnimationFrame(кадр);
+    /* Кадры не идут, пока экран погашен. Отдельный таймер на точное
+       время добудится сам — с запасом 40 мс, чтобы не сработать
+       раньше кадра и не пискнуть дважды. */
+    будильник = setTimeout(function () {
+      if (конец && Date.now() >= конец) { дозвон(); }
+    }, сек * 1000 + 40);
+  }
+
+  function сбросТаймера() {
+    стопКадры();
+    конец = 0;
+    табло(0);
+    tFace.classList.remove('идёт', 'вышло');
+    tBtn.classList.remove('идёт');
+    отпуститьЭкран();
+  }
+
+  tBtn.onclick = function () {
+    var открыт = tPanel.classList.toggle('on');
+    tBtn.classList.toggle('on', открыт);
+    tBtn.setAttribute('aria-expanded', открыт ? 'true' : 'false');
+    // Панель свернули — отсчёт продолжается: её закрывают, чтобы
+    // видеть карточки, а не чтобы бросить отдых.
+  };
+
+  tPanel.querySelector('.tacts').onclick = function (e) {
+    var b = e.target.closest('button');
+    if (b) { пуск(Number(b.dataset.sec)); }
+  };
+
+  // Тап по табло — сброс. Единственный способ остановить отсчёт,
+  // если нажал не ту кнопку.
+  tFace.onclick = function () {
+    if (!конец) { return; }
+    сбросТаймера();
+    stat('таймер сброшен');
+  };
+
+  /* Вернулись к приложению. Кадры всё это время стояли, поэтому цифра
+     на табло устарела — считаем от момента окончания заново. */
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden || !конец) { return; }
+    if (Date.now() >= конец) { дозвон(); return; }
+    держатьЭкран();       // замок мог забрать сам браузер
+    стопКадры();
+    кадрId = requestAnimationFrame(кадр);
+  });
+
   function buildPicker(today) {
     // Барабаны встают на сегодня, а не на дату прошлой записи. Иначе
     // назавтра после тренировки открываешь дневник и видишь вчерашнее
@@ -1149,8 +1407,10 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     var years = [];
     // Снизу — первый год дневника, сверху — следующий: занятие «на завтра»
     // не заносят, но переход года не должен упираться в потолок.
+    // Текст — ’26 вместо 2026: двадцать первый век в дневнике тренировок
+    // уточнять незачем, а освободившиеся 20 px ушли кнопке таймера.
     for (var y = 2022; y <= Number(today.slice(0, 4)) + 1; y++) {
-      years.push({ value: y, text: String(y) });
+      years.push({ value: y, text: '’' + String(y).slice(2) });
     }
     wYear.fill(years, y0);
     wMon.fill(MONTHS.map(function (t, i) {
