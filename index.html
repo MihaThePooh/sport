@@ -396,6 +396,19 @@ h1 {
 .tally { font-size: 17px; font-weight: 600; color: var(--fg); }
 .tally:empty { display: none; }
 
+/* Полоска серий — только у мио-тренировки на правке. В полях всегда
+   одна серия, кнопки переключают какая. */
+.stabs { display: flex; gap: 8px; margin: 2px 0 10px; }
+.stab {
+  flex: 1 1 0; min-height: 40px; padding: 0 8px;
+  border: 1.5px solid var(--line); border-radius: 10px;
+  background: var(--card); color: var(--muted);
+  font: inherit; font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.stab.on { border-color: var(--gold); color: var(--gold); background: #fdf7e8; }
+
 
 .sets { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 /* Поле на подход, а не одна строка «9 7 5»: на телефоне так вылезает
@@ -571,6 +584,10 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
 
 <div class="pick">
   <div class="wheels" id="wheels"></div>
+  <button class="fix" id="fix" type="button"
+          aria-label="подтвердить дату">установить дату</button>
+  <!-- Таймер у самого края: к нему тянутся между подходами, когда
+       дата давно установлена, и краю экрана палец находит вслепую. -->
   <button class="tbtn" id="tbtn" type="button"
           aria-label="таймер отдыха" aria-expanded="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -581,8 +598,6 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       <path d="M18.5 6.5l1.5-1.5"></path>
     </svg>
   </button>
-  <button class="fix" id="fix" type="button"
-          aria-label="подтвердить дату">установить дату</button>
 </div>
 
 <!-- Таймер отдыха между подходами. Свёрнут, пока не нажали кнопку. -->
@@ -841,12 +856,71 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       // и так, но править нечего.
       c.classList.toggle('правится', !!было);
       c.classList.toggle('чужая', !было);
-      if (было) { заполнить(c, было); }
+      if (было) { сериюВКарточку(c, было); }
       check(c);
     });
     closeMenu();
     var первая = cardOf(мои[0]);
     if (первая) { первая.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  }
+
+  /* Мио-тренировка правится по одной серии за раз.
+
+     Высыпать все серии в поля подряд нельзя: «9 3 3 3 3 3 5 2 2 2 2»
+     одиннадцатью ячейками не читается, а при сохранении склеивается
+     в одну серию — границы между заходами теряются навсегда. Поэтому
+     над полями встаёт полоска кнопок, и в полях всегда ровно одна
+     серия. Серии целиком живут на самой карточке, а в файл уходят
+     все разом, когда нажата «сохранить правку». */
+  function сериюВКарточку(card, серии) {
+    var старые = card.querySelector('.stabs');
+    if (старые) { старые.remove(); }
+    card.серии = серии.map(function (s) { return s.slice(); });
+    card.активная = 0;
+
+    // Одна серия — обычная тренировка, полоска ей не нужна.
+    if (card.серии.length > 1) {
+      var box = el('div', 'stabs');
+      card.серии.forEach(function (s, i) {
+        var b = el('button', 'stab' + (i ? '' : ' on'), (i + 1) + '-я серия');
+        b.type = 'button';
+        b.onclick = function () { выбратьСерию(card, i); };
+        box.appendChild(b);
+      });
+      card.insertBefore(box, card.querySelector('.sets'));
+    }
+    заполнить(card, card.серии[0] || []);
+  }
+
+  function выбратьСерию(card, i) {
+    if (!card.серии || card.активная === i) { return; }
+    // Уходя с серии, забираем из полей то, что человек успел исправить.
+    card.серии[card.активная] = values(card);
+    card.активная = i;
+    [].forEach.call(card.querySelectorAll('.stab'), function (b, n) {
+      b.classList.toggle('on', n === i);
+    });
+    заполнить(card, card.серии[i]);
+    check(card);
+  }
+
+  /* Серии карточки с учётом того, что сейчас набрано в полях.
+     Пустые выбрасываем: серия, из которой стёрли все числа, — это
+     отказ от неё, а не серия без подходов. */
+  function серииКарточки(card) {
+    if (!card.серии || card.серии.length < 2) { return null; }
+    var все = card.серии.map(function (s, i) {
+      return i === card.активная ? values(card) : s;
+    });
+    все = все.filter(function (s) { return s.length; });
+    return все.length ? все : null;
+  }
+
+  function забытьСерии(card) {
+    var box = card.querySelector('.stabs');
+    if (box) { box.remove(); }
+    card.серии = null;
+    card.активная = 0;
   }
 
   /* Подставить подходы в карточку: сколько было, столько ячеек и
@@ -868,6 +942,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     сброситьУдаление();
     eachCard(function (c) {
       c.classList.remove('правится', 'чужая');
+      забытьСерии(c);
       сбросить(c);
       check(c);
     });
@@ -1654,6 +1729,15 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     var was = state[move] || { 'подход': 0, 'занятие': 0 };   // рекорд года ДО записи
     var чиню = !!(правка && правка['движения'][move]);
     var btn = c.querySelector(kind === MYO ? '.go.ser' : '.go:not(.ser)');
+
+    /* Правим мио-тренировку — уходят все её серии сразу, а не только
+       открытая в полях. Иначе сохранение правки первой серии стёрло бы
+       вторую: сервер при правке заменяет запись дня целиком. */
+    var серии = чиню ? серииКарточки(c) : null;
+    if (серии) {
+      v = серии;
+      kind = MYO;
+    }
     [].forEach.call(c.querySelectorAll('.go'), function (b) { b.disabled = true; });
     stat('сохранение…');
 
@@ -1681,7 +1765,14 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
       stat('сохранено');
       // Всплывашку бережём для рекорда: если она выскакивает на каждую
       // запись, на рекорд перестаёшь обращать внимание.
-      if (beat) { say('Рекорд! ' + move + ' — ' + v.join(' + '), 'win'); }
+      // v может быть списком серий — тогда склеиваем их через слеш,
+      // как в таблице и в книге.
+      if (beat) {
+        var подпись = (серии ? серии : [v]).map(function (s) {
+          return s.join(' + ');
+        }).join(' ' + SEP + ' ');
+        say('Рекорд! ' + move + ' — ' + подпись, 'win');
+      }
       // Правку закрываем сами: иначе жёлтая полоса висит над формой,
       // и следующая тренировка пишется «в режиме правки».
       if (чиню) {
@@ -1689,6 +1780,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
         delete правка['движения'][move];
         c.classList.remove('правится');
         c.classList.add('чужая');
+        забытьСерии(c);
         сбросить(c);
         // Поправили всё, что было в этом дне — полоса уходит сама.
         if (!Object.keys(правка['движения']).length) { бросить(); return; }
@@ -1805,13 +1897,10 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     MOVES.forEach(function (m) {
       var got = d['движения'][m];
       if (!got) { return; }
-      // Серии при правке сливаем в один ряд: деление на заходы мешает,
-      // когда исправляешь опечатку в одном числе.
-      var плоско = [];
-      got['серии'].forEach(function (s) {
-        s.forEach(function (x) { плоско.push(x); });
-      });
-      день['движения'][m] = плоско;
+      /* Серии передаём как есть, не сливая в один ряд. Слитые они
+         теряли границы заходов: сохранение правки записывало всё
+         одной серией, и мио-тренировка переставала быть мио. */
+      день['движения'][m] = got['серии'].map(function (s) { return s.slice(); });
     });
     править(день);
   }
