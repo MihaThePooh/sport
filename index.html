@@ -113,6 +113,9 @@ h1 {
   cursor: pointer;
 }
 #menu button:active { background: #f2efea; }
+/* «Установить приложение»: первый пункт, пока тренировки открыты в браузере. */
+#menu button.install { background: #eef4f0; }
+#menu button small { display: block; font-size: 12.5px; line-height: 1.35; color: #5c6b62; }
 @media (min-width: 720px) {
   #menu .sheet { left: calc(50% - 272px); right: auto; width: 300px; }
 }
@@ -632,6 +635,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
 
 <div id="menu" hidden>
   <div class="sheet">
+    <button class="install" id="install" type="button" hidden>Установить приложение<small>Иконка «Тренировки» на экране телефона</small></button>
     <button id="recs" type="button">Рекорды</button>
     <div id="recsbody" hidden></div>
     <button id="learn" type="button">Как тренироваться</button>
@@ -639,6 +643,7 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
     <button id="dl" type="button">Скачать таблицу .xlsx</button>
     <button id="mv" type="button">Перенести на другое устройство</button>
     <div id="mvbody" hidden></div>
+    <button id="toHub" type="button">Все приложения (хаб)</button>
   </div>
 </div>
 
@@ -826,6 +831,40 @@ footer { padding: 6px 16px 0; font-size: 12px; color: var(--muted); }
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') { closeMenu(); }
   });
+  /* --- установка на телефон ---
+     Chrome присылает beforeinstallprompt, когда готов поставить приложение;
+     окно открыть можно только по нажатию. Не прислал (недавно отказались,
+     другой браузер) — подсказываем пункт его меню. */
+  var HUB_URL = 'https://hub.michaelperov.com/';
+  var offer = null;
+  var instBtn = document.getElementById('install');
+  function standalone() {
+    return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  }
+  function markInstalled() {
+    try { localStorage.setItem('sport.installed', '1'); } catch (e) { /* приват */ }
+    instBtn.hidden = true;
+  }
+  try { instBtn.hidden = standalone() || localStorage.getItem('sport.installed') === '1'; }
+  catch (e) { instBtn.hidden = standalone(); }
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); offer = e; });
+  window.addEventListener('appinstalled', markInstalled);
+  instBtn.onclick = function () {
+    if (!offer) {
+      instBtn.querySelector('small').textContent =
+        'Chrome сейчас не предлагает сам: ⋮ в углу → «Добавить на главный экран».';
+      return;
+    }
+    closeMenu();
+    offer.prompt();
+    offer.userChoice.then(function (r) {
+      if (r.outcome === 'accepted') { markInstalled(); }
+      offer = null;
+    });
+  };
+  // Открыли тренировки своей иконкой, а нужно другое приложение — до хаба одно нажатие.
+  document.getElementById('toHub').onclick = function () { location.href = HUB_URL; };
+
   /* --- журнал --------------------------------------------------------
 
      Списка записей в меню больше нет: его заменила таблица последних
